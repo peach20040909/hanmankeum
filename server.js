@@ -99,6 +99,12 @@ const routes = [
 
   ['GET', /^\/api\/teams\/([\w-]+)$/, ([id]) => getTeam(id)],
 
+  ['DELETE', /^\/api\/teams\/([\w-]+)$/, ([id]) => {
+    getTeam(id);
+    db.prepare('DELETE FROM teams WHERE id = ?').run(id); // 팀원·기록·서술·첨부는 CASCADE
+    return { ok: true };
+  }],
+
   ['PUT', /^\/api\/teams\/([\w-]+)\/weights$/, ([id], b) => {
     const t = getTeam(id);
     if (t.locked_at) fail(409, '이미 잠긴 기준은 변경할 수 없습니다.');
