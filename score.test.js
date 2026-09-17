@@ -17,9 +17,11 @@ test('가중치 × 유형 내 비중 합산', () => {
   assert.equal(a.score + b.score + c.score, 100);
 });
 
-test('기록 없는 유형은 모두 0', () => {
-  const [a] = computeScores([{ id: 1 }], [], [100]);
-  assert.equal(a.score, 0);
+test('기록 없는 유형의 가중치는 재배분, 기록이 아예 없으면 0', () => {
+  const [a, b] = computeScores([{ id: 1 }, { id: 2 }], [{ member_id: 1, type: 1 }], [20, 40, 40]);
+  assert.equal(a.score, 100);
+  assert.equal(b.score, 0);
+  assert.equal(computeScores([{ id: 1 }], [], [100])[0].score, 0);
 });
 
 test('규칙 분류: 키워드 → 팀 유형', async () => {
