@@ -34,7 +34,7 @@ npm test
 
 Notion API 조회는 블록마다 **마지막 편집자**만 알려주고 편집 이력은 제공하지 않습니다. 그래서 착수 시점부터 웹훅 이벤트(`page.created`, `page.content_updated`, `page.properties_updated`)의 `authors`를 쌓아 편집자별 기록을 만듭니다.
 
-1. https://www.notion.so/profile/integrations 에서 연결 생성 → 시크릿을 `NOTION_TOKEN`에 등록 (기능: 콘텐츠 읽기, 사용자 정보 읽기(이메일 포함))
+1. https://app.notion.com/developers/connections 에서 연결 생성 → 시크릿을 `NOTION_TOKEN`에 등록 (기능: 콘텐츠 읽기, 사용자 정보 읽기(이메일 포함))
 2. 연결의 **Webhooks** 탭 → 구독 생성 → URL `https://<배포 주소>/api/webhooks/notion`, 위 3개 이벤트 선택
 3. 서버 로그의 `[Notion] verification_token: ...` 값을 Notion **Verify**에 붙여넣고, 같은 값을 `NOTION_WEBHOOK_SECRET`에 등록 후 재배포
 4. 한만큼 착수 설정에 팀 Notion 페이지 링크와 팀원 Notion 이메일 입력, 팀 페이지를 연결에 공유
