@@ -5,6 +5,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { computeScores } from './score.js';
 import { fetchGitHub, classify } from './collect.js';
 import { seedDemo } from './seed.js';
+import { verifySignature, parsePageId, ancestors, pageInfo, userInfo, KIND } from './notion.js';
 
 const db = new DatabaseSync(process.env.DB_PATH || 'hanmankeum.db');
 db.exec(`
@@ -36,6 +37,11 @@ CREATE TABLE IF NOT EXISTS files (
   name TEXT NOT NULL, mime TEXT NOT NULL, data BLOB NOT NULL
 );`);
 
+// 기존 DB에 새 컬럼 추가
+for (const [table, col] of [['teams', 'notion_page'], ['members', 'notion_email']]) {
+  if (!db.prepare(`PRAGMA table_info(${table})`).all().some(c => c.name === col)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} TEXT`);
+}
+
 // 무료 호스팅은 재시작 시 DB가 비므로, 비어 있으면 시연용 예시 팀을 채움
 if (!db.prepare('SELECT count(*) n FROM teams').get().n) seedDemo(db);
 
@@ -45,7 +51,8 @@ const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; cha
 class HttpError extends Error { constructor(status, msg) { super(msg); this.status = status; } }
 const fail = (status, msg) => { throw new HttpError(status, msg); };
 
-const isClosed = t => !!t.closed_at || Date.now() > new Date(`${t.deadline}T23:59:59+09:00`).getTime();
+const toolsOf = (repo, notionPage) => JSON.stringify([repo && 'GitHub', notionPage && 'Notion', '수동 기록'].filter(Boolean));
+const isClosed =t => !!t.closed_at || Date.now() > new Date(`${t.deadline}T23:59:59+09:00`).getTime();
 
 function getTeam(id) {
   const t = db.prepare('SELECT * FROM teams WHERE id = ?').get(id) || fail(404, '팀을 찾을 수 없습니다.');
@@ -85,13 +92,37 @@ const routes = [
     if (members.length < 2 || members.length > 10) fail(400, '팀원은 2~10명입니다.');
     if (!/^\d{4}-\d{2}-\d{2}$/.test(b.deadline || '')) fail(400, '마감일을 입력해 주세요.');
     if (b.repo && !/^[\w.-]+\/[\w.-]+$/.test(b.repo)) fail(400, 'GitHub 저장소는 owner/name 형식입니다.');
+    const notionPage = b.notion ? parsePageId(b.notion) || fail(400, 'Notion 페이지 링크를 확인해 주세요.') : null;
     validateWeights(b.categories, b.weights);
     const id = randomUUID();
-    db.prepare('INSERT INTO teams (id, course, name, project, start_date, deadline, repo, tools, categories, weights) VALUES (?,?,?,?,?,?,?,?,?,?)')
+    db.prepare('INSERT INTO teams (id, course, name, project, start_date, deadline, repo, notion_page, tools, categories, weights) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
       .run(id, text(b.course, 60, '과목명'), text(b.name, 30, '팀 이름'), text(b.project, 60, '프로젝트명'), b.start_date || null, b.deadline,
-        b.repo || null, JSON.stringify(b.repo ? ['GitHub', '수동 기록'] : ['수동 기록']), JSON.stringify(b.categories.map(c => c.trim())), JSON.stringify(b.weights));
-    const ins = db.prepare('INSERT INTO members (team_id, name, role, github) VALUES (?,?,?,?)');
-    for (const m of members) ins.run(id, text(m.name, 20, '이름'), (m.role || '').slice(0, 30), (m.github || '').trim().replace(/^@/, '') || null);
+        b.repo || null, notionPage, toolsOf(b.repo, notionPage), JSON.stringify(b.categories.map(c => c.trim())), JSON.stringify(b.weights));
+    const ins = db.prepare('INSERT INTO members (team_id, name, role, github, notion_email) VALUES (?,?,?,?,?)');
+    for (const m of members) {
+      const email = (m.notion_email || '').trim().toLowerCase() || null;
+      if (email && !/^[^\s@]+@[^\s@]+$/.test(email)) fail(400, 'Notion 이메일 형식을 확인해 주세요.');
+      ins.run(id, text(m.name, 20, '이름'), (m.role || '').slice(0, 30), (m.github || '').trim().replace(/^@/, '') || null, email);
+    }
+    return getTeam(id);
+  }],
+
+  // Notion 루트 페이지 연결/변경 (하위 페이지 편집까지 수집)
+  ['PUT', /^\/api\/teams\/([\w-]+)\/notion$/, ([id], b) => {
+    const t = getTeam(id);
+    if (t.closed) fail(409, '마감된 팀입니다.');
+    const page = b.url ? parsePageId(b.url) || fail(400, 'Notion 페이지 링크를 확인해 주세요.') : null;
+    db.prepare('UPDATE teams SET notion_page = ?, tools = ? WHERE id = ?').run(page, toolsOf(t.repo, page), id);
+    return getTeam(id);
+  }],
+
+  ['PUT', /^\/api\/teams\/([\w-]+)\/members\/(\d+)\/notion$/, ([id, mid], b) => {
+    const email = String(b.email || '').trim().toLowerCase() || null;
+    if (email && !/^[^\s@]+@[^\s@]+$/.test(email)) fail(400, 'Notion 이메일 형식을 확인해 주세요.');
+    getTeam(id);
+    db.prepare('UPDATE members SET notion_email = ? WHERE id = ? AND team_id = ?').run(email, mid, id);
+    // 이미 들어온 미매칭 Notion 기록도 연결
+    if (email) db.prepare("UPDATE records SET member_id = ? WHERE team_id = ? AND member_id IS NULL AND tool = 'Notion' AND lower(login) LIKE ?").run(mid, id, `%<${email}>`);
     return getTeam(id);
   }],
 
@@ -220,7 +251,7 @@ const routes = [
   }],
 ];
 
-async function readBody(req) {
+async function readRaw(req) {
   const chunks = [];
   let size = 0;
   for await (const c of req) {
@@ -228,8 +259,41 @@ async function readBody(req) {
     if (size > 40 * 1024 * 1024) fail(413, '요청이 너무 큽니다.');
     chunks.push(c);
   }
-  if (!size) return {};
-  try { return JSON.parse(Buffer.concat(chunks).toString()); } catch { fail(400, 'JSON 형식이 아닙니다.'); }
+  return Buffer.concat(chunks);
+}
+
+async function readBody(req) {
+  const raw = await readRaw(req);
+  if (!raw.length) return {};
+  try { return JSON.parse(raw.toString()); } catch { fail(400, 'JSON 형식이 아닙니다.'); }
+}
+
+// Notion 웹훅 이벤트 → 팀 루트 페이지 하위인지 확인 → 편집자별 기록
+// 같은 페이지·같은 편집자·같은 날(KST)은 1건으로 합침 (반복 편집 부풀리기 완화)
+async function handleNotionEvent(ev) {
+  if (!KIND[ev.type] || ev.entity?.type !== 'page') return;
+  const teams = db.prepare('SELECT * FROM teams WHERE notion_page IS NOT NULL AND locked_at IS NOT NULL').all().filter(t => !isClosed(t));
+  if (!teams.length) return;
+  if (!process.env.NOTION_TOKEN) return console.warn('[Notion] NOTION_TOKEN이 없어 이벤트를 처리하지 못했습니다.');
+  const pageId = ev.entity.id;
+  const chain = await ancestors(pageId);
+  const team = teams.find(t => chain.includes(t.notion_page));
+  if (!team) return;
+  const authors = (ev.authors || []).filter(a => a.type === 'person');
+  if (!authors.length) return;
+  const { title, url } = await pageInfo(pageId);
+  const members = db.prepare('SELECT * FROM members WHERE team_id = ?').all(team.id);
+  const item = { tool: 'Notion', kind: KIND[ev.type], title, body: '' };
+  const [c] = await classify([item], JSON.parse(team.categories), JSON.parse(team.weights));
+  const day = new Date(new Date(ev.timestamp).getTime() + 9 * 3600e3).toISOString().slice(0, 10);
+  for (const a of authors) {
+    const u = await userInfo(a.id);
+    const member = u.email && members.find(m => m.notion_email === u.email);
+    const blocks = ev.data?.updated_blocks?.length;
+    db.prepare('INSERT OR IGNORE INTO records (team_id, member_id, login, ext_id, tool, kind, title, body, url, ref, date, type, reason, classified_by) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+      .run(team.id, member?.id ?? null, `${u.name} <${u.email || a.id}>`, `notion:${pageId}:${a.id}:${day}`, 'Notion', item.kind, title,
+        blocks ? `블록 ${blocks}개 변경` : '', url, `Notion · ${day}`, ev.timestamp, c.type, c.reason, c.by);
+  }
 }
 
 const server = http.createServer(async (req, res) => {
@@ -244,6 +308,19 @@ const server = http.createServer(async (req, res) => {
       const f = db.prepare('SELECT * FROM files WHERE id = ?').get(file[1]) || fail(404, '파일이 없습니다.');
       res.writeHead(200, { 'Content-Type': f.mime, 'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(f.name)}`, 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'" });
       return res.end(f.data);
+    }
+    if (url.pathname === '/api/webhooks/notion' && req.method === 'POST') {
+      const raw = await readRaw(req);
+      let ev;
+      try { ev = JSON.parse(raw.toString()); } catch { fail(400, 'JSON 형식이 아닙니다.'); }
+      // 구독 생성 직후 1회: 이 토큰을 Notion 화면에 붙여넣고, NOTION_WEBHOOK_SECRET 환경변수로 등록
+      if (ev.verification_token && !ev.type) {
+        console.log(`[Notion] verification_token: ${ev.verification_token}`);
+        return send(200, { ok: true });
+      }
+      if (!verifySignature(raw, req.headers['x-notion-signature'], process.env.NOTION_WEBHOOK_SECRET)) fail(401, '서명이 올바르지 않습니다.');
+      send(200, { ok: true });
+      return handleNotionEvent(ev).catch(e => console.error('[Notion] 이벤트 처리 실패:', e.message));
     }
     if (url.pathname.startsWith('/api/')) {
       for (const [method, re, handler] of routes) {

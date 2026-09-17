@@ -28,6 +28,20 @@ npm test
 
 - `GITHUB_TOKEN` — 비공개 저장소 수집, API 한도 확대 (없으면 공개 저장소만, 시간당 60회)
 - `ANTHROPIC_API_KEY` — Claude로 작업 기록을 기여 유형에 분류 (없으면 키워드 규칙 분류)
+- `NOTION_TOKEN`, `NOTION_WEBHOOK_SECRET` — Notion 웹훅 수집 (아래 참고)
+
+## Notion 웹훅 수집
+
+Notion API 조회는 블록마다 **마지막 편집자**만 알려주고 편집 이력은 제공하지 않습니다. 그래서 착수 시점부터 웹훅 이벤트(`page.created`, `page.content_updated`, `page.properties_updated`)의 `authors`를 쌓아 편집자별 기록을 만듭니다.
+
+1. https://www.notion.so/profile/integrations 에서 연결 생성 → 시크릿을 `NOTION_TOKEN`에 등록 (기능: 콘텐츠 읽기, 사용자 정보 읽기(이메일 포함))
+2. 연결의 **Webhooks** 탭 → 구독 생성 → URL `https://<배포 주소>/api/webhooks/notion`, 위 3개 이벤트 선택
+3. 서버 로그의 `[Notion] verification_token: ...` 값을 Notion **Verify**에 붙여넣고, 같은 값을 `NOTION_WEBHOOK_SECRET`에 등록 후 재배포
+4. 한만큼 착수 설정에 팀 Notion 페이지 링크와 팀원 Notion 이메일 입력, 팀 페이지를 연결에 공유
+
+- 같은 페이지 · 같은 편집자 · 같은 날(KST) 편집은 1건으로 합칩니다.
+- 연결 이전 편집, 편집 내용 자체(바뀐 블록 ID만 전달)는 수집하지 않습니다.
+- 기준 잠금 후 · 마감 전 이벤트만 기록합니다.
 
 ## 본선 시연
 
@@ -39,6 +53,7 @@ npm test
 ```
 server.js    HTTP API + SQLite (node:sqlite)
 collect.js   GitHub 수집 · Claude/규칙 분류
+notion.js    Notion 웹훅 서명 검증 · 페이지/사용자 조회
 score.js     기여도 산식
 seed.js      시연용 예시 데이터
 public/      화면 (Vanilla JS, UI·UX 초안 디자인)
@@ -47,5 +62,5 @@ public/      화면 (Vanilla JS, UI·UX 초안 디자인)
 ## 아직 없는 것
 
 - 로그인/권한 — 지금은 팀 링크를 아는 사람이 교수·학생 화면 전환 (학교 SSO 연동 예정)
-- Notion·Google Docs API 자동 수집 — 지금은 링크 기록으로 대체
+- Google Docs 자동 수집 — 지금은 링크 기록으로 대체
 - 기록 부풀리기 판별, 변경량·품질 가중

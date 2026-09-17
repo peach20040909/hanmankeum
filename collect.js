@@ -60,7 +60,7 @@ const RULES = [
 
 // 키워드 규칙 분류 (ANTHROPIC_API_KEY 없을 때 · AI 실패 시)
 export function ruleClassify(item, categories, weights) {
-  const hay = `${item.kind} ${item.title}`;
+  const hay = item.title; // 종류 라벨('문서 편집' 등)은 분류 근거로 쓰지 않음
   for (const [catRe, textRe] of RULES) {
     const idx = categories.findIndex(c => catRe.test(c));
     const m = hay.match(textRe);

@@ -32,3 +32,18 @@ test('규칙 분류: 키워드 → 팀 유형', async () => {
   assert.equal(ruleClassify({ kind: '코드 리뷰', title: '리뷰: 화면' }, cats, ws).type, 2);
   assert.equal(ruleClassify({ kind: 'Commit', title: '검색 화면 구현' }, cats, ws).type, 1);
 });
+
+test('Notion 서명 검증 · 페이지 링크 파싱', async () => {
+  const { verifySignature, parsePageId } = await import('./notion.js');
+  const { createHmac } = await import('node:crypto');
+  const body = Buffer.from('{"type":"page.created"}');
+  const sig = `sha256=${createHmac('sha256', 'secret_x').update(body).digest('hex')}`;
+  assert.equal(verifySignature(body, sig, 'secret_x'), true);
+  assert.equal(verifySignature(body, sig, 'secret_y'), false);
+  assert.equal(verifySignature(body, 'sha256=short', 'secret_x'), false);
+  assert.equal(verifySignature(body, undefined, 'secret_x'), false);
+  const id = '1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d';
+  assert.equal(parsePageId(`https://www.notion.so/team/Cafe-${id}?pvs=4`), '1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d');
+  assert.equal(parsePageId('1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d'), '1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d');
+  assert.equal(parsePageId('https://example.com/nope'), null);
+});
