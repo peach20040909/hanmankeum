@@ -36,7 +36,10 @@ CREATE TABLE IF NOT EXISTS files (
   name TEXT NOT NULL, mime TEXT NOT NULL, data BLOB NOT NULL
 );`);
 
-const MAX_FILE = 5 * 1024 * 1024;
+// 무료 호스팅은 재시작 시 DB가 비므로, 비어 있으면 시연용 예시 팀을 채움
+if (!db.prepare('SELECT count(*) n FROM teams').get().n) seedDemo(db);
+
+const MAX_FILE =5 * 1024 * 1024;
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8' };
 
 class HttpError extends Error { constructor(status, msg) { super(msg); this.status = status; } }
