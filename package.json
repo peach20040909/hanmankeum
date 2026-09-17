@@ -1,0 +1,17 @@
+{
+  "name": "hanmankeum",
+  "version": "0.1.0",
+  "private": true,
+  "description": "한만큼 — 흩어진 작업 기록을 모아, 팀 프로젝트 기여를 근거와 함께 확인",
+  "type": "module",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "start": "node --env-file-if-exists=.env server.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.126.0"
+  }
+}
