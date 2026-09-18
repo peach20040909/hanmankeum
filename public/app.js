@@ -107,6 +107,8 @@ function renderChrome() {
       : [['setup', 'lock', '착수 설정'], ['evidence', 'folder', '활동 기록'], ['statement', 'pencil', '오프라인 서술']];
     for (const [v, ic, label] of tabs) nav.push([`#/team/${t.id}/${v}`, ic, label, state.view === v]);
   }
+  const [statusText, dot] = !t ? [] : t.closed ? ['마감 · 산출 완료', '#358976'] : t.locked_at ? ['진행 중 · 기록 수집', '#4b7cf3'] : ['착수 설정 중', '#d39b3a'];
+  $('#side-team').innerHTML = t ? `<a class="side-team" href="#/team/${t.id}"><small>${esc(t.course)} · ${esc(t.name)}</small><strong>${esc(t.project)}</strong><span class="status" style="--dot:${dot}"><i></i>${statusText}</span></a>` : '';
   $('#side-nav').innerHTML = nav.map(([href, ic, label, active]) => `<a class="nav-item ${active ? 'active' : ''}" href="${href}" ${active ? 'aria-current="page"' : ''}>${icon(ic)}${label}</a>`).join('');
   $('#bottom-nav').innerHTML = nav.map(([href, ic, label, active]) => `<a class="${active ? 'active' : ''}" href="${href}" aria-label="${label}" style="display:grid;place-items:center">${icon(ic)}<span>${label}</span></a>`).join('');
 }

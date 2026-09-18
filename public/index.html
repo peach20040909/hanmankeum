@@ -6,13 +6,14 @@
 <meta name="theme-color" content="#f5f5fa">
 <meta name="description" content="한만큼 — 흩어진 작업 기록을 모아, 팀 프로젝트 기여를 근거와 함께 확인합니다.">
 <title>한만큼</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='24' fill='%234b7cf3'/><path d='M28 52l14 14 30-32' stroke='white' stroke-width='11' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='9' fill='%233d6ef0'/><rect x='7.5' y='17' width='4.2' height='8' rx='2.1' fill='white' fill-opacity='.6'/><rect x='13.9' y='12' width='4.2' height='13' rx='2.1' fill='white' fill-opacity='.8'/><rect x='20.3' y='7' width='4.2' height='18' rx='2.1' fill='white'/></svg>">
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-<svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
+<svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" style="position:absolute" aria-hidden="true">
 <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></symbol>
 <symbol id="i-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+<symbol id="logo" viewBox="0 0 32 32"><defs><linearGradient id="logo-g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5a86f7"/><stop offset="1" stop-color="#3159d6"/></linearGradient></defs><rect width="32" height="32" rx="9" fill="url(#logo-g)"/><rect x="7.5" y="17" width="4.2" height="8" rx="2.1" fill="#fff" fill-opacity=".55"/><rect x="13.9" y="12" width="4.2" height="13" rx="2.1" fill="#fff" fill-opacity=".8"/><rect x="20.3" y="7" width="4.2" height="18" rx="2.1" fill="#fff"/></symbol>
 <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
 <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M6 18 18 6"/></symbol>
 <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3 20v-3a6 6 0 0 1 12 0v3M16 5a3 3 0 0 1 0 6m2 3a5 5 0 0 1 3 5v1"/></symbol>
@@ -43,13 +44,15 @@
 <symbol id="i-clipboard" viewBox="0 0 24 24"><path d="M8 4H4v18h16V4h-4"/><rect x="8" y="2" width="8" height="5" rx="1"/><path d="m8 14 3 3 5-7"/></symbol>
 </svg>
 <header class="app-header">
-  <div class="flex gap12"><button class="icon-button mobile-menu" data-action="menu" aria-label="메뉴 열기" aria-expanded="false"><svg class="icon"><use href="#i-menu"/></svg></button><a class="university" href="#/"><span class="school-symbol proof-mark-lg"><svg class="icon"><use href="#i-check"/></svg></span><span class="school-title">한만큼</span><span class="system-title">팀 기여 근거</span></a></div>
+  <div class="flex gap12"><button class="icon-button mobile-menu" data-action="menu" aria-label="메뉴 열기" aria-expanded="false"><svg class="icon"><use href="#i-menu"/></svg></button><a class="brand" href="#/" aria-label="한만큼 홈"><svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><use href="#logo"/></svg><span class="brand-text"><strong>한만큼</strong><small>각자가 한 만큼</small></span></a></div>
   <div class="course-selector" id="header-course"></div>
   <div class="header-right" id="header-right"></div>
 </header>
 <aside class="sidebar" aria-label="메뉴">
+  <div id="side-team"></div>
+  <p class="side-label">메뉴</p>
   <nav class="nav-group" id="side-nav"></nav>
-  <div class="sidebar-bottom"><div class="peer-logo"><span class="proof-mark"><svg class="icon sm"><use href="#i-check"/></svg></span>한만큼</div><p>한 만큼 평가받는다 · Team HMK</p></div>
+  <div class="side-foot"><p>기여도는 성적이 아닙니다.<br>기록과 맥락을 함께 확인하세요.</p><span>© Team HMK · 명지대</span></div>
 </aside>
 <main class="main" id="main"><div class="content" id="content"></div></main>
 <nav class="bottom-nav" aria-label="빠른 메뉴" id="bottom-nav"></nav>
