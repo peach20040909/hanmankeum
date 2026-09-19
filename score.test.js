@@ -24,13 +24,19 @@ test('기록 없는 유형의 가중치는 재배분, 기록이 아예 없으면
   assert.equal(computeScores([{ id: 1 }], [], [100])[0].score, 0);
 });
 
-test('규칙 분류: 키워드 → 팀 유형', async () => {
+test('규칙 분류: 4축 (0 생성 · 1 개선 · 2 조율/관리 · 3 의사소통)', async () => {
   const { ruleClassify } = await import('./collect.js');
-  const cats = ['기획', '제작', 'QA', '발표자료', '조율'], ws = [20, 40, 15, 15, 10];
-  assert.equal(ruleClassify({ kind: 'Commit', title: 'add login tests' }, cats, ws).type, 2);
-  assert.equal(ruleClassify({ kind: 'Commit', title: 'README 업데이트' }, cats, ws).type, 0);
-  assert.equal(ruleClassify({ kind: '코드 리뷰', title: '리뷰: 화면' }, cats, ws).type, 2);
-  assert.equal(ruleClassify({ kind: 'Commit', title: '검색 화면 구현' }, cats, ws).type, 1);
+  const c = (kind, title, tool = 'GitHub') => ruleClassify({ kind, title, tool }).type;
+  assert.equal(c('Commit', '검색 화면 구현'), 0);
+  assert.equal(c('Commit', 'fix: 로그인 오류'), 1);
+  assert.equal(c('Commit', '오타 수정'), 1);
+  assert.equal(c('Commit', 'chore: CI 설정'), 2);
+  assert.equal(c('코드 리뷰', '리뷰: 화면'), 1);
+  assert.equal(c('Issue', '로그인 기능'), 2);
+  assert.equal(c('댓글', '좋아요'), 3);
+  assert.equal(c('문서 작성', '회의 일정 정리', 'Docs'), 2);
+  assert.equal(c('문서 작성', '발표 피드백 정리', 'Docs'), 3);
+  assert.equal(c('Commit', 'prefix 추가'), 0); // 'fix'는 단어 단위로만
 });
 
 test('Notion 서명 검증 · 페이지 링크 파싱', async () => {

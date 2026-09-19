@@ -44,7 +44,7 @@ export async function ancestors(pageId) {
 export async function pageInfo(pageId) {
   const page = await notion(`/pages/${pageId}`).catch(() => null);
   const title = page && Object.values(page.properties || {}).find(p => p.type === 'title')?.title?.map(t => t.plain_text).join('');
-  return { title: title || '(제목 없음)', url: page?.url || null };
+  return { title: title || '(제목 없음)', url: page?.url || null, createdBy: page?.created_by?.id || null };
 }
 
 export async function userInfo(userId) {
@@ -52,4 +52,4 @@ export async function userInfo(userId) {
   return { name: u?.name || userId.slice(0, 8), email: u?.person?.email?.toLowerCase() || null };
 }
 
-export const KIND = { 'page.created': '페이지 생성', 'page.content_updated': '문서 편집', 'page.properties_updated': '속성 편집' };
+export const KIND = { 'page.created': '페이지 생성', 'page.content_updated': '문서 편집', 'page.properties_updated': '속성 편집', 'comment.created': '댓글' };

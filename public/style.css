@@ -44,3 +44,18 @@
 .nav-item.active:before{left:-16px}
 @media(min-width:761px){.bottom-nav{display:none}.main{padding-bottom:40px}}
 @media(max-width:760px){.brand-mark{width:30px;height:30px}.brand-text strong{font-size:16px}.brand-text small{display:none}.sidebar{bottom:55px}}
+/* 4축 · 동의 · 의견 · 동료평가 */
+.notice-strong{display:flex;gap:10px;align-items:flex-start;background:#eef3ff;border:1px solid #d5e0fb;color:#2f4f9a;border-radius:12px;padding:14px 16px;font-size:13px;line-height:1.7}
+.notice-strong .icon{margin-top:2px;color:var(--blue)}
+.unverified{border:1.5px dashed #e3c98f;background:#fffcf4;border-radius:var(--radius);padding:20px}
+.card.unverified{box-shadow:none}
+.testimony-row{display:flex;align-items:center;gap:12px;width:100%;padding:12px 0;border-top:1px solid #f1e6cc;text-align:left;font-size:12.5px;color:#6b5a33}
+.testimony-row>span{flex:1}
+.testimony{padding:14px 0;border-top:1px dashed #ecdcb5}
+.testimony:first-of-type{border-top:0}
+.invite-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--line);flex-wrap:wrap}
+.invite-row .spacer{flex:1}
+.opinion{padding:14px 0;border-top:1px solid var(--line)}
+.axis-legend{display:grid;gap:6px;margin-top:14px;font-size:11.5px;color:#6c7385}
+.axis-legend strong{color:#3a4157}
+.scope-line .count-circle{flex:none}

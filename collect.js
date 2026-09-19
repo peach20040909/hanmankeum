@@ -1,5 +1,14 @@
 import Anthropic from '@anthropic-ai/sdk';
 
+// 기여 4축 (예선 5유형 폐기)
+export const AXES = ['산출물 생성', '산출물 개선', '조율/관리', '의사소통'];
+const AXIS_DEF = [
+  '산출물 생성: 새 결과물을 만듦 (문서 작성, 커밋, 슬라이드 추가, 기능 구현)',
+  '산출물 개선: 남의 결과물을 수정·보완 (문서 편집, PR 리뷰, 버그·오탈자 수정, 리팩터링)',
+  '조율/관리: 팀 진행을 움직임 (일정 등록, 태스크 배분, 이슈 생성, 회의 소집, 배포·설정)',
+  '의사소통: 논의 참여 (댓글, 메시지, 피드백)',
+];
+
 async function gh(path) {
   const headers = { Accept: 'application/vnd.github+json', 'User-Agent': 'hanmankeum' };
   if (process.env.GITHUB_TOKEN) headers.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
@@ -8,7 +17,7 @@ async function gh(path) {
   return res.json();
 }
 
-// GitHub 저장소에서 작성자·변경 기록 수집 (커밋 · PR · 리뷰 · 이슈)
+// GitHub 저장소에서 작성자·변경 기록 수집 (커밋 · PR · 리뷰 · 댓글 · 이슈)
 // ponytail: 최대 300 커밋 / 100 PR / 30 PR 리뷰. 대형 저장소면 페이지네이션 확장.
 export async function fetchGitHub(repo) {
   if (!/^[\w.-]+\/[\w.-]+$/.test(repo || '')) throw new Error('저장소는 owner/name 형식이어야 합니다.');
@@ -41,6 +50,12 @@ export async function fetchGitHub(repo) {
       });
     }
   }
+  for (const c of await gh(`/repos/${repo}/issues/comments?per_page=100`)) {
+    out.push({
+      ext_id: `comment:${c.id}`, login: c.user?.login, tool: 'GitHub', kind: '댓글',
+      title: (c.body || '').split('\n')[0].slice(0, 120) || '댓글', body: c.body || '', url: c.html_url, date: c.created_at, ref: 'Issue/PR 댓글',
+    });
+  }
   for (const i of await gh(`/repos/${repo}/issues?state=all&per_page=100`)) {
     if (i.pull_request) continue;
     out.push({
@@ -51,29 +66,26 @@ export async function fetchGitHub(repo) {
   return out;
 }
 
-const RULES = [
-  [/기획|pm|조사|분석|요구|명세|보고서|고찰/i, /\b(docs?|readme|spec|plan|design|wiki)\b|기획|요구|명세|문서|설계|조사/i],
-  [/qa|테스트|검증|test/i, /\b(test|tests|fix|bug|hotfix|qa|lint)\b|테스트|버그|수정|검증/i],
-  [/발표|ppt|슬라이드|제안서|ir/i, /\b(ppt|slides?|presentation|demo)\b|발표|슬라이드|시연/i],
-  [/조율|일정|협업|관리|인프라/i, /\b(merge|chore|ci|cd|config|release|deploy|build)\b|일정|회의|배포|설정/i],
-];
+const IMPROVE = /\b(fix(es|ed)?|bug|hotfix|refactor|typo|style|lint|improve|update|clean ?up|polish|tweak)\b|수정|개선|보완|리팩|오타|정리|다듬/i;
+const MANAGE = /\b(chore|ci|cd|config|release|deploy|build|merge|setup|schedule|milestone)\b|일정|회의|배분|태스크|담당|관리|계획|배포|설정/i;
+const TALK = /\b(feedback|discuss|question|reply)\b|피드백|논의|의견|댓글|질문|답변|공유/i;
 
-// 키워드 규칙 분류 (ANTHROPIC_API_KEY 없을 때 · AI 실패 시)
-export function ruleClassify(item, categories, weights) {
-  const hay = item.title; // 종류 라벨('문서 편집' 등)은 분류 근거로 쓰지 않음
-  for (const [catRe, textRe] of RULES) {
-    const idx = categories.findIndex(c => catRe.test(c));
-    const m = hay.match(textRe);
-    if (idx >= 0 && (m || (item.kind === '코드 리뷰' && catRe.test('qa')))) {
-      return { type: idx, reason: m ? `'${m[0]}' 키워드 규칙으로 ${categories[idx]} 유형에 연결했습니다.` : `코드 리뷰 기록을 ${categories[idx]} 유형에 연결했습니다.` };
-    }
+// 규칙 분류: 활동 종류가 축을 정하고, 모호한 것만 제목 키워드로 판단 (API 키 없을 때 · AI 실패 시)
+export function ruleClassify(item) {
+  const by = (type, why) => ({ type, reason: `${why} ${AXES[type]}에 연결했습니다.` });
+  const m = re => item.title.match(re)?.[0];
+  switch (item.kind) {
+    case '코드 리뷰': return by(1, '다른 팀원의 PR을 검토한 리뷰라');
+    case '댓글': return by(3, '논의에 참여한 댓글이라');
+    case 'Issue': return by(2, '할 일·문제를 등록한 이슈라');
   }
-  const make = categories.findIndex(c => /제작|개발|프론트|백엔드|구현|실험/.test(c));
-  const idx = make >= 0 ? make : weights.indexOf(Math.max(...weights));
-  return { type: idx, reason: `특정 키워드가 없어 기본 작업 유형(${categories[idx]})으로 연결했습니다.` };
+  if (m(TALK) && item.tool !== 'GitHub') return by(3, `'${m(TALK)}' 키워드로`);
+  if (m(MANAGE)) return by(2, `'${m(MANAGE)}' 키워드로`);
+  if (m(IMPROVE)) return by(1, `'${m(IMPROVE)}' 키워드로`);
+  return by(0, '새 결과물을 만든 기록으로 보고');
 }
 
-export async function classify(items, categories, weights) {
+export async function classify(items) {
   if (!items.length) return [];
   if (process.env.ANTHROPIC_API_KEY) {
     try {
@@ -101,10 +113,10 @@ export async function classify(items, categories, weights) {
         },
         betas: ['server-side-fallback-2026-07-01'],
         fallbacks: 'default',
-        system: '대학 팀 프로젝트의 작업 기록을 팀이 합의한 기여 유형 중 하나로 분류합니다. 평가가 아니라 분류만 합니다. reason은 한국어 한 문장으로, 어떤 근거로 그 유형에 연결했는지 적습니다.',
+        system: `대학 팀 프로젝트의 작업 기록을 기여 4축 중 하나로 분류합니다. 평가가 아니라 분류만 합니다. reason은 한국어 한 문장으로, 어떤 근거로 그 축에 연결했는지 적습니다.\n\n4축(인덱스: 정의):\n${AXIS_DEF.map((d, i) => `${i}: ${d}`).join('\n')}`,
         messages: [{
           role: 'user',
-          content: `기여 유형(인덱스: 이름): ${categories.map((c, i) => `${i}: ${c}`).join(', ')}\n\n작업 기록:\n${items
+          content: `작업 기록:\n${items
             .map((it, i) => `${i}. [${it.tool} ${it.kind}] ${it.title}${it.body && it.body !== it.title ? ` — ${it.body.slice(0, 200).replace(/\s+/g, ' ')}` : ''}`)
             .join('\n')}`,
         }],
@@ -114,9 +126,7 @@ export async function classify(items, categories, weights) {
         const map = new Map(JSON.parse(text).items.map(x => [x.i, x]));
         return items.map((it, i) => {
           const x = map.get(i);
-          return x && x.type >= 0 && x.type < categories.length
-            ? { type: x.type, reason: x.reason, by: 'ai' }
-            : { ...ruleClassify(it, categories, weights), by: 'rule' };
+          return x && x.type >= 0 && x.type < AXES.length ? { type: x.type, reason: x.reason, by: 'ai' } : { ...ruleClassify(it), by: 'rule' };
         });
       }
       console.warn('AI 분류 중단:', res.stop_reason);
@@ -124,5 +134,5 @@ export async function classify(items, categories, weights) {
       console.warn('AI 분류 실패, 규칙 분류로 대체:', e.message);
     }
   }
-  return items.map(it => ({ ...ruleClassify(it, categories, weights), by: 'rule' }));
+  return items.map(it => ({ ...ruleClassify(it), by: 'rule' }));
 }
