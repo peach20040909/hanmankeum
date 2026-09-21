@@ -93,10 +93,11 @@ async function route() {
   try {
     if (kind === 'join' && id) {
       const j = await api(`/join/${id}`, {}, null);
+      const target = view || ''; // #/join/<key>/<view> → 해당 화면으로 바로
       keys[j.team_id] = { ...keys[j.team_id], ...(j.role === 'professor' ? { prof: id } : { member: id, name: j.name }) };
       saveKeys();
       store.set(`hmk-as:${j.team_id}`, j.role);
-      history.replaceState(null, '', `#/team/${j.team_id}`); // 키가 주소창·기록에 남지 않게
+      history.replaceState(null, '', `#/team/${j.team_id}${target ? `/${target}` : ''}`); // 키가 주소창·기록에 남지 않게
       return route();
     }
     if (kind !== 'team' || !id) {
