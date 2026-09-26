@@ -59,3 +59,10 @@
 .axis-legend{display:grid;gap:6px;margin-top:14px;font-size:11.5px;color:#6c7385}
 .axis-legend strong{color:#3a4157}
 .scope-line .count-circle{flex:none}
+/* MRL · 익명 */
+.mrl-tag{display:inline-block;margin-left:6px;padding:2px 7px;border-radius:6px;background:var(--blue-light);color:var(--blue-dark);font-size:10px;font-weight:800;letter-spacing:.06em;vertical-align:middle}
+.axis-badge{display:grid;place-items:center;width:26px;height:26px;border-radius:9px;font-size:13px;font-weight:800;flex:none;color:#fff}
+.axis-badge.a0{background:#4b7cf3}.axis-badge.a1{background:#8b88d9}.axis-badge.a2{background:#358976}
+.anon-chip{margin-left:auto;display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border-radius:999px;background:#eef2ff;color:#4558a8;font-size:11px;font-weight:700}
+.notice-strong.anon{gap:14px;align-items:center;background:#f2f5ff;border-color:#dae2fb}
+.anon-seal{display:grid;place-items:center;width:44px;height:44px;border-radius:14px;background:var(--blue);color:#fff;flex:none}

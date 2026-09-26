@@ -1,12 +1,11 @@
 import Anthropic from '@anthropic-ai/sdk';
 
-// 기여 4축 (예선 5유형 폐기)
-export const AXES = ['산출물 생성', '산출물 개선', '조율/관리', '의사소통'];
+// 점수에 들어가는 3축 (예선 5유형 · 4축 폐기)
+export const AXES = ['만들기', '다듬기', '이끌기'];
 const AXIS_DEF = [
-  '산출물 생성: 새 결과물을 만듦 (문서 작성, 커밋, 슬라이드 추가, 기능 구현)',
-  '산출물 개선: 남의 결과물을 수정·보완 (문서 편집, PR 리뷰, 버그·오탈자 수정, 리팩터링)',
-  '조율/관리: 팀 진행을 움직임 (일정 등록, 태스크 배분, 이슈 생성, 회의 소집, 배포·설정)',
-  '의사소통: 논의 참여 (댓글, 메시지, 피드백)',
+  '만들기(Create): 새 결과물을 만듦 — 신규 커밋, 새 문서·페이지, 새 슬라이드',
+  '다듬기(Refine): 기존 결과물을 고치거나 검토 — 남의 문서 편집, PR 리뷰·리뷰 댓글, 버그 수정',
+  '이끌기(Lead): 기록에 남는 관리 — 이슈·태스크 생성과 배정, 마일스톤, 회의록 작성',
 ];
 
 async function gh(path) {
@@ -50,10 +49,11 @@ export async function fetchGitHub(repo) {
       });
     }
   }
-  for (const c of await gh(`/repos/${repo}/issues/comments?per_page=100`)) {
+  // PR에 달린 리뷰 댓글만 수집 (다듬기). 일반 잡담 댓글은 점수 축이 없어 수집하지 않음
+  for (const c of await gh(`/repos/${repo}/pulls/comments?per_page=100`)) {
     out.push({
-      ext_id: `comment:${c.id}`, login: c.user?.login, tool: 'GitHub', kind: '댓글',
-      title: (c.body || '').split('\n')[0].slice(0, 120) || '댓글', body: c.body || '', url: c.html_url, date: c.created_at, ref: 'Issue/PR 댓글',
+      ext_id: `review-comment:${c.id}`, login: c.user?.login, tool: 'GitHub', kind: '리뷰 댓글',
+      title: (c.body || '').split('\n')[0].slice(0, 120) || '리뷰 댓글', body: c.body || '', url: c.html_url, date: c.created_at, ref: `리뷰 댓글 · ${c.path || ''}`.trim(),
     });
   }
   for (const i of await gh(`/repos/${repo}/issues?state=all&per_page=100`)) {
@@ -66,9 +66,8 @@ export async function fetchGitHub(repo) {
   return out;
 }
 
-const IMPROVE = /\b(fix(es|ed)?|bug|hotfix|refactor|typo|style|lint|improve|update|clean ?up|polish|tweak)\b|수정|개선|보완|리팩|오타|정리|다듬/i;
-const MANAGE = /\b(chore|ci|cd|config|release|deploy|build|merge|setup|schedule|milestone)\b|일정|회의|배분|태스크|담당|관리|계획|배포|설정/i;
-const TALK = /\b(feedback|discuss|question|reply)\b|피드백|논의|의견|댓글|질문|답변|공유/i;
+const REFINE = /\b(fix(es|ed)?|bug|hotfix|refactor|typo|style|lint|improve|update|clean ?up|polish|tweak|review)\b|수정|개선|보완|리팩|오타|정리|다듬|검토/i;
+const LEAD = /\b(chore|ci|cd|config|release|deploy|build|setup|schedule|milestone|roadmap)\b|회의록|회의|일정|배분|태스크|담당|마일스톤|계획|배포|설정/i;
 
 // 규칙 분류: 활동 종류가 축을 정하고, 모호한 것만 제목 키워드로 판단 (API 키 없을 때 · AI 실패 시)
 export function ruleClassify(item) {
@@ -76,12 +75,11 @@ export function ruleClassify(item) {
   const m = re => item.title.match(re)?.[0];
   switch (item.kind) {
     case '코드 리뷰': return by(1, '다른 팀원의 PR을 검토한 리뷰라');
-    case '댓글': return by(3, '논의에 참여한 댓글이라');
-    case 'Issue': return by(2, '할 일·문제를 등록한 이슈라');
+    case '리뷰 댓글': return by(1, '코드 리뷰 과정에서 남긴 댓글이라');
+    case 'Issue': return by(2, '할 일·담당을 등록한 이슈라');
   }
-  if (m(TALK) && item.tool !== 'GitHub') return by(3, `'${m(TALK)}' 키워드로`);
-  if (m(MANAGE)) return by(2, `'${m(MANAGE)}' 키워드로`);
-  if (m(IMPROVE)) return by(1, `'${m(IMPROVE)}' 키워드로`);
+  if (m(LEAD)) return by(2, `'${m(LEAD)}' 키워드로`);
+  if (m(REFINE)) return by(1, `'${m(REFINE)}' 키워드로`);
   return by(0, '새 결과물을 만든 기록으로 보고');
 }
 

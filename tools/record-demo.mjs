@@ -8,7 +8,7 @@ import { join } from 'node:path';
 const OUT = process.argv[2];
 const CHROME = process.env.CHROME_PATH || 'C:/Program Files/Google/Chrome/Application/chrome.exe';
 const BASE = 'http://localhost:3000';
-const VW = 1280, VH = 664; // 위 56px는 워크플로우 바 자리 (합쳐서 1280x720)
+const VW = 960, VH = 720; // 왼쪽 320px 단계 패널 + 오른쪽 앱 화면 = 1280x720
 mkdirSync(OUT, { recursive: true });
 
 const call = async (path, key, method = 'GET', body) => {
@@ -20,7 +20,7 @@ const call = async (path, key, method = 'GET', body) => {
 
 const t = await call('/teams', null, 'POST', {
   course: '캡스톤디자인(2)', name: '팀 3', project: '캠퍼스 분실물 매칭 앱',
-  start_date: '2026-09-07', deadline: '2026-12-15', weights: [30, 25, 25, 20],
+  start_date: '2026-09-07', deadline: '2026-12-15', weights: [40, 35, 25],
   members: [
     { name: '박준호', role: '팀장 · 개발', github: 'junho-park' },
     { name: '김서연', role: '기획 · 자료 제작', github: 'seoyeon-kim' },
@@ -95,73 +95,75 @@ const steps = [];
 const step = name => steps.push({ name, t: Date.now() / 1000 });
 const T0 = () => frames.length ? frames[0].t : 0;
 
-await open(K[0]);
-await cdp.send('Page.startScreencast', { format: 'jpeg', quality: 88, maxWidth: 1920, maxHeight: 1000, everyNthFrame: 1 });
-await wait(700);
-
-// 1. 동의 · 착수 (학생)
-step('consent');
-await click('#consent-check', 500);
-await click('#consent-next', 1500);
-await wait(500);
-for (const k of K.slice(1)) await call(`/teams/${TID}/consent`, k, 'POST', { agree: true });
-
-// 2. 가중치 설정 · 잠금 (교수)
-step('weights');
 await open(P, 'setup');
-await scrollTo('#weight-editor', 600);
-await wait(400);
-await click('[data-action="preset"][data-i="1"]', 900);
-await click('[data-action="w-save"]', 1600);
-await wait(400);
+await cdp.send('Page.startScreencast', { format: 'jpeg', quality: 88, maxWidth: 1920, maxHeight: 1000, everyNthFrame: 1 });
+await wait(1200);
+
+// 1. 팀 초대 · 도구 연결 (교수)
+step('invite');
+await wait(2200);
+await scrollTo('.setup-step:nth-of-type(2)', 900);
+await wait(2600);
+
+// 2. MRL 가중치 설정 · 잠금 (교수)
+step('weights');
+await scrollTo('#weight-editor', 900);
+await wait(1800);
+await click('[data-action="preset"][data-i="1"]', 1600);
+await wait(900);
+await click('[data-action="w-save"]', 2200);
+await wait(900);
 for (const k of K) await call(`/teams/${TID}/confirm`, k, 'POST');
 await open(P, 'setup');
-await scrollTo('[data-action="lock"]', 600);
-await click('[data-action="lock"]', 1800);
+await scrollTo('[data-action="lock"]', 900);
+await wait(1200);
+await click('[data-action="lock"]', 2400);
+await wait(1200);
 
 // 3. 학기 중 수집 (학생 조용한 화면 → 교수 활동 근거)
 step('collect');
 await open(K[0], 'setup');
-await wait(1500);
+await wait(3200);
 await open(demo.prof_key, 'evidence');
-await wait(600);
-await scrollTo('.evidence-list', 700);
 await wait(1400);
+await scrollTo('.evidence-list', 900);
+await wait(3000);
 
 // 4. 익명 동료평가 (학생)
 step('peer');
 await call(`/teams/${TID}/close`, P, 'POST');
 await open(K[0], 'peer');
-await wait(900);
-await scrollTo('.peer-card', 700);
+await wait(2400);
+await scrollTo('.peer-card', 900);
+await wait(1200);
 await moveTo('.peer-card [data-f="axis"]');
 await page.evaluate(() => window.__ripple());
 await page.select('.peer-card [data-f="axis"]', '2');
-await wait(600);
+await wait(1400);
 await moveTo('.peer-card [data-f="did"]');
 await page.evaluate(() => window.__ripple());
 await page.click('.peer-card [data-f="did"]');
-await page.type('.peer-card [data-f="did"]', '11/28 리허설 장소를 섭외하고 시연 장비를 점검했습니다.', { delay: 38 });
-await wait(900);
+await page.type('.peer-card [data-f="did"]', '11/28 리허설 장소를 섭외하고 시연 장비를 점검했습니다.', { delay: 45 });
+await wait(2000);
 await cursor();
 
 // 5. 기여도 리포트 (교수)
 step('report');
 await open(demo.prof_key, 'report');
-await scrollTo('.chart-card', 700);
-await wait(1200);
-await click('.contribution-row', 1400);
-await wait(1600);
-await scrollTo('#modal .table-wrap', 600).catch(() => {});
-await wait(1200);
-await click('[data-action="close-modal"]', 900);
+await scrollTo('.chart-card', 900);
+await wait(3000);
+await click('.contribution-row', 1600);
+await wait(2600);
+await scrollTo('#modal .table-wrap', 800).catch(() => {});
+await wait(2200);
+await click('[data-action="close-modal"]', 1200);
 await click('.contribution-row:nth-of-type(4)', 1400).catch(async () => {
   await page.evaluate(() => document.querySelectorAll('.contribution-row')[3].click());
   await wait(1200);
 });
-await wait(1400);
-await page.evaluate(() => document.querySelector('#modal .unverified')?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
 await wait(2200);
+await page.evaluate(() => document.querySelector('#modal .unverified')?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
+await wait(3400);
 
 await cdp.send('Page.stopScreencast');
 await browser.close();

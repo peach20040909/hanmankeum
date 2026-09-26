@@ -51,7 +51,7 @@ CREATE TABLE IF NOT EXISTS peer_reviews (
 );`);
 
 // 기존 DB에 새 컬럼 추가
-for (const [table, col] of [['teams', 'notion_page'], ['teams', 'prof_key'], ['members', 'notion_email'], ['members', 'key'], ['members', 'consented_at']]) {
+for (const [table, col] of [['teams', 'notion_page'], ['teams', 'prof_key'], ['members', 'notion_email'], ['members', 'key']]) {
   if (!db.prepare(`PRAGMA table_info(${table})`).all().some(c => c.name === col)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} TEXT`);
 }
 for (const t of db.prepare('SELECT id FROM teams WHERE prof_key IS NULL').all()) db.prepare('UPDATE teams SET prof_key = ? WHERE id = ?').run(newKey(), t.id);
@@ -59,7 +59,7 @@ for (const m of db.prepare('SELECT id FROM members WHERE key IS NULL').all()) db
 
 const MAX_FILE = 5 * 1024 * 1024;
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8' };
-const BASIS = ['직접 관찰', '함께 수행', '산출물 확인', '전해 들음', '관찰 못 함'];
+const BASIS = ['직접 관찰', '함께 수행', '산출물 확인', '관찰 못 함'];
 
 class HttpError extends Error { constructor(status, msg) { super(msg); this.status = status; } }
 const fail = (status, msg) => { throw new HttpError(status, msg); };
@@ -76,9 +76,9 @@ const text = (v, max, name) => {
 const optText = (v, max) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, max) : null);
 
 function validateWeights(weights) {
-  if (!Array.isArray(weights) || weights.length !== AXES.length) fail(400, '4축 가중치를 모두 입력해 주세요.');
+  if (!Array.isArray(weights) || weights.length !== AXES.length) fail(400, 'MRL 3축 가중치를 모두 입력해 주세요.');
   if (weights.some(w => !Number.isInteger(w) || w < 0 || w > 100)) fail(400, '가중치는 0~100 정수입니다.');
-  if (weights.reduce((a, b) => a + b, 0) !== 100) fail(400, '4축 가중치 합계는 100%여야 합니다.');
+  if (weights.reduce((a, b) => a + b, 0) !== 100) fail(400, '3축 가중치 합계는 100%여야 합니다.');
 }
 
 // 초대 링크 키로 역할 확인: 교수 키 → professor, 팀원 키 → student(본인)
@@ -92,7 +92,6 @@ function authorize(req, teamId) {
 }
 const profOnly = a => (a.role === 'professor' ? a : fail(403, '교수만 할 수 있습니다.'));
 const studentOnly = a => (a.role === 'student' ? a : fail(403, '팀원(학생)만 할 수 있습니다.'));
-const consented = a => (a.me.consented_at ? a : fail(403, '개인정보 수집·이용 동의 후 이용할 수 있습니다.'));
 
 // 역할별로 보이는 팀 정보
 function teamView(teamId, a) {
@@ -124,7 +123,7 @@ function createTeam(b) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(b.deadline || '')) fail(400, '마감일을 입력해 주세요.');
   if (b.repo && !/^[\w.-]+\/[\w.-]+$/.test(b.repo)) fail(400, 'GitHub 저장소는 owner/name 형식입니다.');
   const notionPage = b.notion ? parsePageId(b.notion) || fail(400, 'Notion 페이지 링크를 확인해 주세요.') : null;
-  const weights = b.weights || [30, 25, 25, 20];
+  const weights = b.weights || [40, 35, 25]; // 균형 프리셋
   validateWeights(weights);
   const id = randomUUID();
   db.prepare('INSERT INTO teams (id, course, name, project, start_date, deadline, repo, notion_page, tools, categories, weights, prof_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)')
@@ -164,14 +163,6 @@ const routes = [
     return { ok: true };
   }],
 
-  // 작업 1: 개인정보 수집·이용 동의 (본인)
-  ['POST', /^\/api\/teams\/([\w-]+)\/consent$/, ([id], b, req) => {
-    const a = studentOnly(authorize(req, id));
-    if (b.agree !== true) fail(400, '동의 항목을 확인해 주세요.');
-    db.prepare("UPDATE members SET consented_at = coalesce(consented_at, datetime('now')) WHERE id = ?").run(a.me.id);
-    return teamView(id, authorize(req, id));
-  }],
-
   ['PUT', /^\/api\/teams\/([\w-]+)\/notion$/, ([id], b, req) => {
     const a = profOnly(authorize(req, id));
     if (isClosed(a.t)) fail(409, '마감된 팀입니다.');
@@ -201,14 +192,14 @@ const routes = [
   }],
 
   ['POST', /^\/api\/teams\/([\w-]+)\/confirm$/, ([id], _, req) => {
-    const a = consented(studentOnly(authorize(req, id)));
+    const a = studentOnly(authorize(req, id));
     if (a.t.locked_at) fail(409, '이미 잠겼습니다.');
     db.prepare("UPDATE members SET confirmed_at = datetime('now') WHERE id = ?").run(a.me.id);
     return teamView(id, a);
   }],
 
   ['POST', /^\/api\/teams\/([\w-]+)\/opinions$/, ([id], b, req) => {
-    const a = consented(studentOnly(authorize(req, id)));
+    const a = studentOnly(authorize(req, id));
     if (a.t.locked_at) fail(409, '이미 잠긴 기준입니다.');
     db.prepare('INSERT INTO opinions (team_id, member_id, text) VALUES (?,?,?)').run(id, a.me.id, text(b.text, 500, '의견'));
     return teamView(id, a);
@@ -226,7 +217,6 @@ const routes = [
     const a = profOnly(authorize(req, id));
     if (a.t.locked_at) fail(409, '이미 잠겼습니다.');
     const ms = db.prepare('SELECT * FROM members WHERE team_id = ?').all(id);
-    if (ms.some(m => !m.consented_at)) fail(409, '팀원 전원이 개인정보 수집·이용에 동의해야 잠글 수 있습니다.');
     if (ms.some(m => !m.confirmed_at)) fail(409, '팀원 전원이 가중치를 확인해야 잠글 수 있습니다.');
     db.prepare("UPDATE teams SET locked_at = datetime('now') WHERE id = ?").run(id);
     return teamView(id, a);
@@ -267,7 +257,6 @@ const routes = [
   // API 연동 전 도구(Google Docs 등)의 작업을 링크로 기록. 학생은 본인 것만.
   ['POST', /^\/api\/teams\/([\w-]+)\/records$/, async ([id], b, req) => {
     const a = authorize(req, id);
-    if (a.role === 'student') consented(a);
     if (!a.t.locked_at) fail(409, '착수 기준을 잠근 뒤 기록할 수 있습니다.');
     if (isClosed(a.t) && a.role === 'student') fail(409, '마감된 팀입니다.');
     const memberId = a.role === 'student' ? a.me.id : b.member_id;
@@ -310,12 +299,16 @@ const routes = [
     if (!isClosed(a.t)) fail(403, '학기 중에는 기여도를 산출하지 않습니다. 마감 후 1회 산출합니다.');
     const team = teamView(id, a);
     const records = db.prepare('SELECT * FROM records WHERE team_id = ? ORDER BY date DESC').all(id);
-    const reviews = db.prepare('SELECT * FROM peer_reviews WHERE team_id = ? ORDER BY target_id, id').all(id);
+    // 익명: 교수 화면에도 응답자 이름 대신 고정 익명 번호만 (계정 연결은 DB에만 남아 소명 시 확인)
+    const alias = new Map(db.prepare('SELECT DISTINCT reviewer_id FROM peer_reviews WHERE team_id = ? ORDER BY reviewer_id').all(id)
+      .map((r, i) => [r.reviewer_id, `익명 ${String.fromCharCode(65 + i)}`]));
+    const reviews = db.prepare('SELECT * FROM peer_reviews WHERE team_id = ? ORDER BY target_id, id').all(id)
+      .map(({ reviewer_id, ...r }) => ({ ...r, reviewer: alias.get(reviewer_id) }));
     return { team, scores: computeScores(team.members, records, team.weights), records, reviews };
   }],
 
   ['POST', /^\/api\/teams\/([\w-]+)\/statements$/, ([id], b, req) => {
-    const a = consented(studentOnly(authorize(req, id)));
+    const a = studentOnly(authorize(req, id));
     if (!isClosed(a.t)) fail(409, '마감 후 작성할 수 있습니다.');
     if (db.prepare('SELECT 1 FROM statements WHERE team_id = ? AND member_id = ?').get(id, a.me.id)) fail(409, '자기 기술은 1회만 제출할 수 있습니다.');
     const files = Array.isArray(b.files) ? b.files : [];
@@ -333,22 +326,21 @@ const routes = [
 
   // 작업 3: 익명 동료평가 (마감 후 1회, 본인 제외 팀원 전원)
   ['POST', /^\/api\/teams\/([\w-]+)\/peer-reviews$/, ([id], b, req) => {
-    const a = consented(studentOnly(authorize(req, id)));
+    const a = studentOnly(authorize(req, id));
     if (!isClosed(a.t)) fail(409, '동료평가는 마감 후에 열립니다.');
     if (db.prepare('SELECT 1 FROM peer_reviews WHERE team_id = ? AND reviewer_id = ?').get(id, a.me.id)) fail(409, '동료평가는 1회만 제출할 수 있습니다.');
     const targets = db.prepare('SELECT id FROM members WHERE team_id = ? AND id != ?').all(id, a.me.id).map(m => m.id);
     const items = Array.isArray(b.items) ? b.items : [];
     if (items.length !== targets.length || !targets.every(t => items.some(i => i.target_id === t))) fail(400, '모든 팀원에 대해 작성해 주세요.');
     const rows = items.map(i => {
-      if (!Number.isInteger(i.axis) || i.axis < 0 || i.axis >= AXES.length) fail(400, '기여 유형(4축)을 선택해 주세요.');
+      if (!Number.isInteger(i.axis) || i.axis < 0 || i.axis >= AXES.length) fail(400, '기여 축을 선택해 주세요.');
       if (!BASIS.includes(i.basis)) fail(400, '근거를 선택해 주세요.');
       const unseen = i.basis === '관찰 못 함';
-      const did = unseen ? optText(i.did, 800) : text(i.did, 800, '구체적으로 한 일');
-      if (i.link && !/^https?:\/\//.test(i.link)) fail(400, '연결 자료 링크는 http(s)로 시작해야 합니다.');
+      const did = unseen ? optText(i.did, 800) : text(i.did, 800, '무엇을 했는지');
       // 공동 작업은 다른 팀원 계정에 기록됐을 수 있어 팀 전체 기록에서 연결 허용
       const rec = i.record_id ? db.prepare('SELECT id FROM records WHERE id = ? AND team_id = ?').get(i.record_id, id) : null;
       if (i.record_id && !rec) fail(400, '연결한 기록을 찾을 수 없습니다.');
-      return [i.target_id, text(i.period || '전체 기간', 40, '평가 기간'), i.axis, did, optText(i.impact, 400), i.basis, optText(i.link, 300), rec?.id ?? null, optText(i.note, 500)];
+      return [i.target_id, '전체 기간', i.axis, did, null, i.basis, null, rec?.id ?? null, null];
     });
     const ins = db.prepare('INSERT INTO peer_reviews (team_id, reviewer_id, target_id, period, axis, did, impact, basis, link, record_id, note) VALUES (?,?,?,?,?,?,?,?,?,?,?)');
     for (const r of rows) ins.run(id, a.me.id, ...r);
@@ -392,10 +384,13 @@ async function handleNotionEvent(ev) {
   const day = new Date(new Date(ev.timestamp).getTime() + 9 * 3600e3).toISOString().slice(0, 10);
   for (const a of authors) {
     const kind = KIND[ev.type];
-    // 문서 편집: 본인이 만든 페이지면 '생성', 남의 페이지면 '개선'
-    const c = kind === '문서 편집'
-      ? (createdBy === a.id ? { type: 0, reason: '본인이 만든 페이지의 내용을 작성해 산출물 생성에 연결했습니다.' } : { type: 1, reason: '다른 팀원이 만든 페이지를 편집해 산출물 개선에 연결했습니다.' })
-      : { 페이지생성: { type: 0, reason: '새 페이지를 만들어 산출물 생성에 연결했습니다.' }, 속성편집: { type: 2, reason: '일정·담당·상태 등 속성 변경을 조율/관리에 연결했습니다.' }, 댓글: { type: 3, reason: '페이지 댓글을 의사소통에 연결했습니다.' } }[kind.replace(/\s/g, '')];
+    // 회의록 등 관리 문서는 제목으로 '이끌기', 그 외에는 본인 페이지면 '만들기' · 남의 페이지면 '다듬기'
+    const lead = /회의록|회의|일정|계획|마일스톤|태스크|담당/.test(title);
+    const c = kind === '속성 편집' ? { type: 2, reason: '일정·담당·상태 등 속성 변경을 이끌기에 연결했습니다.' }
+      : kind === '댓글' ? { type: 1, reason: '문서에 남긴 검토 댓글을 다듬기에 연결했습니다.' }
+      : lead ? { type: 2, reason: '회의·일정 등 관리 문서 작성이라 이끌기에 연결했습니다.' }
+      : kind === '페이지 생성' || createdBy === a.id ? { type: 0, reason: '본인이 만든 페이지의 내용을 작성해 만들기에 연결했습니다.' }
+      : { type: 1, reason: '다른 팀원이 만든 페이지를 편집해 다듬기에 연결했습니다.' };
     const u = await userInfo(a.id);
     const member = u.email && members.find(m => m.notion_email === u.email);
     const blocks = ev.data?.updated_blocks?.length;

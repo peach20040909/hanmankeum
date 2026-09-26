@@ -24,18 +24,18 @@ test('기록 없는 유형의 가중치는 재배분, 기록이 아예 없으면
   assert.equal(computeScores([{ id: 1 }], [], [100])[0].score, 0);
 });
 
-test('규칙 분류: 4축 (0 생성 · 1 개선 · 2 조율/관리 · 3 의사소통)', async () => {
+test('규칙 분류: MRL 3축 (0 만들기 · 1 다듬기 · 2 이끌기)', async () => {
   const { ruleClassify } = await import('./collect.js');
   const c = (kind, title, tool = 'GitHub') => ruleClassify({ kind, title, tool }).type;
   assert.equal(c('Commit', '검색 화면 구현'), 0);
+  assert.equal(c('Pull request', '분실물 매칭 API 구현'), 0);
   assert.equal(c('Commit', 'fix: 로그인 오류'), 1);
   assert.equal(c('Commit', '오타 수정'), 1);
-  assert.equal(c('Commit', 'chore: CI 설정'), 2);
   assert.equal(c('코드 리뷰', '리뷰: 화면'), 1);
+  assert.equal(c('리뷰 댓글', '여기 조건 확인 필요해요'), 1);
   assert.equal(c('Issue', '로그인 기능'), 2);
-  assert.equal(c('댓글', '좋아요'), 3);
-  assert.equal(c('문서 작성', '회의 일정 정리', 'Docs'), 2);
-  assert.equal(c('문서 작성', '발표 피드백 정리', 'Docs'), 3);
+  assert.equal(c('Commit', 'chore: CI 설정'), 2);
+  assert.equal(c('문서 작성', '11/28 회의록', 'Notion'), 2);
   assert.equal(c('Commit', 'prefix 추가'), 0); // 'fix'는 단어 단위로만
 });
 

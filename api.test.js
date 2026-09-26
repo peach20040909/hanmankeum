@@ -20,8 +20,8 @@ test('착수·권한·동료평가 흐름', async t => {
 
   const { data: c } = await call('/teams', null, 'POST', { course: 'c', name: 'n', project: 'p', deadline: '2099-12-31', members: [{ name: 'A' }, { name: 'B' }] });
   const id = c.team.id, P = c.prof_key, [ka, kb] = c.team.members.map(m => m.key);
-  assert.deepEqual(c.team.weights, [30, 25, 25, 20]); // 균형 기본값
-  assert.deepEqual(c.team.categories, ['산출물 생성', '산출물 개선', '조율/관리', '의사소통']);
+  assert.deepEqual(c.team.weights, [40, 35, 25]); // 균형 기본값
+  assert.deepEqual(c.team.categories, ['만들기', '다듬기', '이끌기']);
 
   // 권한: 키 없음 거부, 학생은 다른 팀원 키를 못 봄
   assert.equal((await call(`/teams/${id}`)).status, 403);
@@ -30,13 +30,9 @@ test('착수·권한·동료평가 흐름', async t => {
   assert.ok(sv.members.every(m => !m.key) && !sv.prof_key);
 
   // 가중치: 교수만, 합 100
-  assert.equal((await call(`/teams/${id}/weights`, ka, 'PUT', { weights: [40, 30, 15, 15] })).status, 403);
-  assert.equal((await call(`/teams/${id}/weights`, P, 'PUT', { weights: [40, 30, 15, 10] })).status, 400);
-  assert.equal((await call(`/teams/${id}/weights`, P, 'PUT', { weights: [40, 30, 15, 15] })).status, 200);
-
-  // 동의 전에는 확인·의견 불가
-  assert.equal((await call(`/teams/${id}/confirm`, ka, 'POST')).status, 403);
-  for (const k of [ka, kb]) assert.equal((await call(`/teams/${id}/consent`, k, 'POST', { agree: true })).status, 200);
+  assert.equal((await call(`/teams/${id}/weights`, ka, 'PUT', { weights: [50, 30, 20] })).status, 403);
+  assert.equal((await call(`/teams/${id}/weights`, P, 'PUT', { weights: [50, 30, 10] })).status, 400);
+  assert.equal((await call(`/teams/${id}/weights`, P, 'PUT', { weights: [50, 30, 20] })).status, 200);
   await call(`/teams/${id}/opinions`, ka, 'POST', { text: '개선 비중을 높여 주세요' });
   const op = (await call(`/teams/${id}`, P)).data.opinions[0];
   assert.equal((await call(`/teams/${id}/opinions/${op.id}`, ka, 'PATCH', { status: 'accepted' })).status, 403);
@@ -59,13 +55,15 @@ test('착수·권한·동료평가 흐름', async t => {
   // 마감 후: 동료평가 1회, 리포트는 교수만
   await call(`/teams/${id}/close`, P, 'POST');
   const [ma, mb] = locked.members;
-  const item = { target_id: mb.id, period: '전체 기간', axis: 2, did: '회의 일정을 잡았습니다', basis: '직접 관찰' };
+  const item = { target_id: mb.id, axis: 2, did: '회의 일정을 잡았습니다', basis: '직접 관찰' };
   assert.equal((await call(`/teams/${id}/peer-reviews`, ka, 'POST', { items: [{ ...item, did: '' }] })).status, 400);
   assert.equal((await call(`/teams/${id}/peer-reviews`, ka, 'POST', { items: [item] })).status, 200);
   assert.equal((await call(`/teams/${id}/peer-reviews`, ka, 'POST', { items: [item] })).status, 409);
   assert.equal((await call(`/teams/${id}/report`, kb)).status, 403);
   const rep = (await call(`/teams/${id}/report`, P)).data;
   assert.equal(rep.reviews.length, 1);
+  assert.equal(rep.reviews[0].reviewer, '익명 A'); // 교수 화면에도 이름 없음
+  assert.ok(!('reviewer_id' in rep.reviews[0]));
   assert.equal(rep.scores.find(s => s.member_id === ma.id).score, 100); // 동료평가는 기여율에 미반영
   assert.equal(rep.scores.find(s => s.member_id === mb.id).score, 0);
 });
