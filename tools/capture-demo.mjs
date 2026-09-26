@@ -64,6 +64,17 @@ await shot('locked');
 await open(K[0], 'setup');
 await shot('quiet');
 
+// ── 마감 후: 학생 익명 동료평가 폼 (로그에 없는 기여)
+await call(`/teams/${TID}/close`, P, 'POST');
+await open(K[0], 'peer');
+await center('.peer-card');
+await page.select('.peer-card [data-f="axis"]', '2');
+await page.select('.peer-card [data-f="basis"]', '함께 수행');
+await page.type('.peer-card [data-f="did"]', '11/28 리허설 장소를 섭외하고 시연 장비를 점검했습니다.', { delay: 8 });
+// 익명 안내 + 평가 대상 + 1~3번 문항이 한 화면에 들어오도록
+await page.evaluate(() => window.scrollTo({ top: document.querySelector('.peer-card').offsetTop - 150 }));
+await shot('peer');
+
 // ── STEP 03 분류: 활동 근거 목록(4축 태그)
 await open(demo.prof_key, 'evidence');
 await center('.evidence-list');
