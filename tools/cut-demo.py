@@ -27,12 +27,12 @@ VERSIONS = {
     "short": ("한만큼_시연_15초.mp4", False, [
         ("weights", 21.6, 2.7), ("collect", 30.8, 2.7), ("peer", 39.8, 3.3), ("report", 49.8, 2.8), ("report", 59.0, 3.5),
     ]),
-    "core": ("한만큼_시연_40초.mp4", True, [
-        ("invite", 1.8, 2.8), ("weights", 8.0, 4.8), ("weights", 21.0, 4.0),
-        ("collect", 25.4, 3.0), ("collect", 30.4, 3.6),
-        ("peer", 37.6, 6.8), ("report", 49.0, 5.0), ("report", 58.0, 5.8),
+    "core": ("한만큼_시연_40초.mp4", False, [
+        ("invite", 1.8, 3.4), ("weights", 8.0, 5.6), ("weights", 20.6, 3.7),
+        ("collect", 25.2, 3.6), ("collect", 30.2, 4.4),
+        ("peer", 37.4, 7.8), ("report", 48.8, 5.8), ("report", 57.6, 5.7),
     ]),
-    "full": ("한만큼_시연_전체.mp4", True, [(k, None, None) for k in KEYS]),
+    "full": ("한만큼_시연_전체.mp4", False, [(k, None, None) for k in KEYS]),
 }
 
 BD, RG = "C:/Windows/Fonts/malgunbd.ttf", "C:/Windows/Fonts/malgun.ttf"
@@ -60,13 +60,25 @@ def wrap(text, font, width):
     return out
 
 
+def logo_mark(img, x, y, size):
+    """앱 로고와 같은 마크: 라운드 사각형 + 높이가 다른 막대 3개"""
+    ss = 4  # 안티에일리어싱용 확대 배율
+    m = Image.new("RGBA", (size * ss, size * ss), (0, 0, 0, 0))
+    md = ImageDraw.Draw(m)
+    u = size * ss / 32  # 32 단위 좌표계
+    md.rounded_rectangle((0, 0, size * ss - 1, size * ss - 1), int(9 * u), fill=(61, 110, 240, 255))
+    for bx, by, alpha in ((7.5, 17, 150), (13.9, 12, 205), (20.3, 7, 255)):
+        md.rounded_rectangle((bx * u, by * u, (bx + 4.2) * u, 25 * u), int(2.1 * u), fill=(255, 255, 255, alpha))
+    mark = m.resize((size, size), Image.LANCZOS)
+    img.paste(mark, (x, y), mark)
+
+
 def panel(step_i, progress):
     img = Image.new("RGB", (PANEL, H), BG)
     d = ImageDraw.Draw(img)
-    d.rounded_rectangle((px(40), px(40), px(74), px(74)), px(10), fill=ACC)
-    d.text((px(57), px(57)), "ㅎ", font=F_LOGO, fill=INK, anchor="mm")
-    d.text((px(88), px(45)), "한만큼", font=F_LOGO, fill=INK)
-    d.text((px(90), px(76)), "각자가 한 만큼", font=F_SUB, fill=DIM)
+    logo_mark(img, px(40), px(40), px(36))
+    d.text((px(92), px(43)), "한만큼", font=F_LOGO, fill=INK)
+    d.text((px(94), px(74)), "각자가 한 만큼", font=F_SUB, fill=DIM)
     y = px(150)
     for i, (_, title, _) in enumerate(STEPS):
         on = i == step_i
@@ -92,8 +104,7 @@ def panel(step_i, progress):
 def cover(title, sub):
     img = Image.new("RGB", (W, H), BG)
     d = ImageDraw.Draw(img)
-    d.rounded_rectangle((W / 2 - 32, H / 2 - 142, W / 2 + 32, H / 2 - 78), 18, fill=ACC)
-    d.text((W / 2, H / 2 - 110), "ㅎ", font=ImageFont.truetype(BD, 40), fill=INK, anchor="mm")
+    logo_mark(img, int(W / 2 - px(32)), int(H / 2 - px(142)), px(64))
     d.text((W / 2, H / 2 - 24), title, font=ImageFont.truetype(BD, 42), fill=INK, anchor="mm")
     for i, line in enumerate(sub.split("\n")):
         d.text((W / 2, H / 2 + 42 + i * 32), line, font=ImageFont.truetype(RG, 19), fill=(176, 187, 216), anchor="mm")
