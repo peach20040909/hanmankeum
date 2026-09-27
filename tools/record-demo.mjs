@@ -8,7 +8,7 @@ import { join } from 'node:path';
 const OUT = process.argv[2];
 const CHROME = process.env.CHROME_PATH || 'C:/Program Files/Google/Chrome/Application/chrome.exe';
 const BASE = 'http://localhost:3000';
-const VW = 960, VH = 720; // 왼쪽 320px 단계 패널 + 오른쪽 앱 화면 = 1280x720
+const VW = 1344, VH = 1008; // 1920x1080 중 오른쪽 앱 영역 크기 그대로 (업스케일 없음)
 mkdirSync(OUT, { recursive: true });
 
 const call = async (path, key, method = 'GET', body) => {
@@ -33,7 +33,7 @@ const demo = await call('/demo', null, 'POST');
 
 const browser = await puppeteer.launch({ executablePath: CHROME, headless: 'new', args: ['--hide-scrollbars', '--force-color-profile=srgb'] });
 const page = await browser.newPage();
-await page.setViewport({ width: VW, height: VH, deviceScaleFactor: 1.5 });
+await page.setViewport({ width: VW, height: VH, deviceScaleFactor: 1 }); // 녹화는 CSS 픽셀 크기로 나온다
 
 // ── 가상 커서: 페이지 안에 그려서 녹화에 그대로 담긴다
 const CURSOR = `
@@ -96,7 +96,7 @@ const step = name => steps.push({ name, t: Date.now() / 1000 });
 const T0 = () => frames.length ? frames[0].t : 0;
 
 await open(P, 'setup');
-await cdp.send('Page.startScreencast', { format: 'jpeg', quality: 88, maxWidth: 1920, maxHeight: 1000, everyNthFrame: 1 });
+await cdp.send('Page.startScreencast', { format: 'png', maxWidth: 1920, maxHeight: 1440, everyNthFrame: 1 });
 await wait(1200);
 
 // 1. 팀 초대 · 도구 연결 (교수)
@@ -169,7 +169,7 @@ await cdp.send('Page.stopScreencast');
 await browser.close();
 
 const t0 = T0();
-frames.forEach((f, i) => writeFileSync(join(OUT, `f${String(i).padStart(6, '0')}.jpg`), Buffer.from(f.data, 'base64')));
+frames.forEach((f, i) => writeFileSync(join(OUT, `f${String(i).padStart(6, '0')}.png`), Buffer.from(f.data, 'base64')));
 writeFileSync(join(OUT, 'timeline.json'), JSON.stringify({
   frames: frames.map((f, i) => ({ i, t: +(f.t - t0).toFixed(3) })),
   steps: steps.map(s => ({ name: s.name, t: +(s.t - (steps[0].t - 0.7)).toFixed(3) })),

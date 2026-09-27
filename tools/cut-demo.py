@@ -7,8 +7,10 @@ import imageio_ffmpeg
 
 REC, OUTDIR = Path(sys.argv[1]), Path(sys.argv[2])
 ONLY = sys.argv[3] if len(sys.argv) > 3 else None
-W, H, PANEL, FPS = 1280, 720, 384, 30          # 3 : 7 분할
-APP_W, APP_H, APP_Y = W - PANEL, 672, 24
+S = 1.5                                        # 720p 기준 좌표 × S = 1080p
+W, H, PANEL, FPS = 1920, 1080, 576, 30         # 3 : 7 분할
+APP_W, APP_H, APP_Y = 1344, 1008, 36           # 녹화 원본 크기 그대로 (업스케일 없음)
+px = lambda v: int(v * S)
 BG, INK, DIM, ACC, LINE = (13, 17, 38), (255, 255, 255), (134, 143, 173), (91, 140, 255), (34, 41, 74)
 
 STEPS = [  # (키, 단계명, 설명)
@@ -34,9 +36,9 @@ VERSIONS = {
 }
 
 BD, RG = "C:/Windows/Fonts/malgunbd.ttf", "C:/Windows/Fonts/malgun.ttf"
-F_LOGO, F_SUB = ImageFont.truetype(BD, 25), ImageFont.truetype(RG, 12)
-F_NUM, F_STEP, F_STEP_ON = ImageFont.truetype(BD, 13), ImageFont.truetype(RG, 15), ImageFont.truetype(BD, 16)
-F_TITLE, F_CAP = ImageFont.truetype(BD, 25), ImageFont.truetype(RG, 14)
+F_LOGO, F_SUB = ImageFont.truetype(BD, px(25)), ImageFont.truetype(RG, px(12))
+F_NUM, F_STEP, F_STEP_ON = ImageFont.truetype(BD, px(13)), ImageFont.truetype(RG, px(15)), ImageFont.truetype(BD, px(16))
+F_TITLE, F_CAP = ImageFont.truetype(BD, px(25)), ImageFont.truetype(RG, px(14))
 _probe = ImageDraw.Draw(Image.new("RGB", (1, 1)))
 
 tl = json.loads((REC / "timeline.json").read_text(encoding="utf-8"))
@@ -61,29 +63,29 @@ def wrap(text, font, width):
 def panel(step_i, progress):
     img = Image.new("RGB", (PANEL, H), BG)
     d = ImageDraw.Draw(img)
-    d.rounded_rectangle((40, 40, 74, 74), 10, fill=ACC)
-    d.text((57, 57), "ㅎ", font=F_LOGO, fill=INK, anchor="mm")
-    d.text((88, 45), "한만큼", font=F_LOGO, fill=INK)
-    d.text((90, 76), "각자가 한 만큼", font=F_SUB, fill=DIM)
-    y = 150
+    d.rounded_rectangle((px(40), px(40), px(74), px(74)), px(10), fill=ACC)
+    d.text((px(57), px(57)), "ㅎ", font=F_LOGO, fill=INK, anchor="mm")
+    d.text((px(88), px(45)), "한만큼", font=F_LOGO, fill=INK)
+    d.text((px(90), px(76)), "각자가 한 만큼", font=F_SUB, fill=DIM)
+    y = px(150)
     for i, (_, title, _) in enumerate(STEPS):
         on = i == step_i
         if on:
-            d.rounded_rectangle((28, y - 14, PANEL - 28, y + 34), 12, fill=(22, 29, 62))
-            d.rounded_rectangle((28, y - 14, 32, y + 34), 2, fill=ACC)
-        d.ellipse((48, y - 2, 68, y + 18), fill=ACC if on else (30, 37, 68))
-        d.text((58, y + 8), str(i + 1), font=F_NUM, fill=INK if on else DIM, anchor="mm")
-        d.text((84, y + 8), title, font=F_STEP_ON if on else F_STEP, fill=INK if on else DIM, anchor="lm")
-        y += 66
+            d.rounded_rectangle((px(28), y - px(14), PANEL - px(28), y + px(34)), px(12), fill=(22, 29, 62))
+            d.rounded_rectangle((px(28), y - px(14), px(32), y + px(34)), px(2), fill=ACC)
+        d.ellipse((px(48), y - px(2), px(68), y + px(18)), fill=ACC if on else (30, 37, 68))
+        d.text((px(58), y + px(8)), str(i + 1), font=F_NUM, fill=INK if on else DIM, anchor="mm")
+        d.text((px(84), y + px(8)), title, font=F_STEP_ON if on else F_STEP, fill=INK if on else DIM, anchor="lm")
+        y += px(66)
     title, desc = STEPS[step_i][1], STEPS[step_i][2]
-    lines = wrap(desc, F_CAP, PANEL - 80)
-    y = H - 72 - len(lines) * 26
-    d.line((40, y - 56, PANEL - 40, y - 56), fill=LINE)
-    d.text((40, y - 36), title, font=F_TITLE, fill=INK)
+    lines = wrap(desc, F_CAP, PANEL - px(80))
+    y = H - px(72) - len(lines) * px(26)
+    d.line((px(40), y - px(56), PANEL - px(40), y - px(56)), fill=LINE)
+    d.text((px(40), y - px(36)), title, font=F_TITLE, fill=INK)
     for line in lines:
-        d.text((40, y + 6), line, font=F_CAP, fill=(191, 201, 226))
-        y += 26
-    d.rectangle((0, H - 4, int(PANEL * progress), H), fill=ACC)
+        d.text((px(40), y + px(6)), line, font=F_CAP, fill=(191, 201, 226))
+        y += px(26)
+    d.rectangle((0, H - px(4), int(PANEL * progress), H), fill=ACC)
     return img
 
 
@@ -102,7 +104,7 @@ def render(name, covers, cuts):
     ff = imageio_ffmpeg.get_ffmpeg_exe()
     out = OUTDIR / name
     p = subprocess.Popen([ff, "-y", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}", "-r", str(FPS), "-i", "-",
-                          "-c:v", "libx264", "-preset", "slow", "-crf", "20", "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(out)],
+                          "-c:v", "libx264", "-preset", "slower", "-crf", "16", "-pix_fmt", "yuv420p", "-x264-params", "ref=5:bframes=5:aq-mode=3", "-movflags", "+faststart", str(out)],
                          stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     n_written = 0
 
@@ -138,7 +140,7 @@ def render(name, covers, cuts):
             idx = frames[j]["i"]
             if idx not in cache:
                 cache.clear()
-                cache[idx] = Image.open(REC / f"f{idx:06d}.jpg").convert("RGB").resize((APP_W, APP_H), Image.LANCZOS)
+                cache[idx] = Image.open(REC / f"f{idx:06d}.png").convert("RGB")
             img = Image.new("RGB", (W, H), BG)
             img.paste(panel(i, (done + f / FPS) / total), (0, 0))
             img.paste(cache[idx], (PANEL, APP_Y))
