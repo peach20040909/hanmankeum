@@ -50,7 +50,7 @@
 .unverified{border:1.5px dashed #e3c98f;background:#fffcf4;border-radius:var(--radius);padding:20px}
 .card.unverified{box-shadow:none}
 .testimony-row{display:flex;align-items:center;gap:12px;width:100%;padding:12px 0;border-top:1px solid #f1e6cc;text-align:left;font-size:12.5px;color:#6b5a33}
-.testimony-row>span{flex:1}
+.testimony-row>span:not(.avatar){flex:1}
 .testimony{padding:14px 0;border-top:1px dashed #ecdcb5}
 .testimony:first-of-type{border-top:0}
 .invite-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--line);flex-wrap:wrap}
