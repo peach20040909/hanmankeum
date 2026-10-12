@@ -66,6 +66,25 @@ export async function fetchGitHub(repo) {
   return out;
 }
 
+// 분류 프롬프트 버전. 프롬프트를 고치면 올린다 → 각 기록에 어떤 버전으로 분류됐는지 남음
+export const PROMPT_VERSION = 'mrl-3axis-v2';
+
+// AI 사용 흔적 감지: AI 코딩 도구가 남기는 공동 작성자 표시, 생성 문구, 직접 남긴 [AI] 표시
+// AI 사용은 감점 요소가 아니다. 사람이 한 부분과 AI가 도운 부분을 구분해 보여주기 위한 정보.
+const AI_TOOLS = [
+  ['Claude', /claude|anthropic/i], ['GitHub Copilot', /copilot/i], ['ChatGPT·Codex', /chatgpt|openai|codex/i],
+  ['Gemini', /gemini/i], ['Cursor', /cursor/i],
+];
+export function detectAI(item) {
+  const text = `${item.title || ''}\n${item.body || ''}`;
+  const trailer = [...text.matchAll(/^co-authored-by:\s*(.+)$/gim)].map(m => m[1]).join('\n'); // 사람·AI 공동 작성자가 여럿일 수 있음
+  const tool = AI_TOOLS.find(([, re]) => re.test(trailer))?.[0];
+  if (tool) return { ai: true, note: `커밋 공동 작성자에 ${tool} 표시` };
+  if (/generated with\s*\[?(claude|copilot|cursor|chatgpt)/i.test(text)) return { ai: true, note: 'AI 도구 생성 문구 포함' };
+  if (/^\s*\[ai\]|ai-assisted|#ai사용/im.test(text)) return { ai: true, note: '작성자가 AI 사용을 표시' };
+  return { ai: false, note: null };
+}
+
 const REFINE = /\b(fix(es|ed)?|bug|hotfix|refactor|typo|style|lint|improve|update|clean ?up|polish|tweak|review)\b|수정|개선|보완|리팩|오타|정리|다듬|검토/i;
 const LEAD = /\b(chore|ci|cd|config|release|deploy|build|setup|schedule|milestone|roadmap)\b|회의록|회의|일정|배분|태스크|담당|마일스톤|계획|배포|설정/i;
 
@@ -111,7 +130,7 @@ export async function classify(items) {
         },
         betas: ['server-side-fallback-2026-07-01'],
         fallbacks: 'default',
-        system: `대학 팀 프로젝트의 작업 기록을 기여 4축 중 하나로 분류합니다. 평가가 아니라 분류만 합니다. reason은 한국어 한 문장으로, 어떤 근거로 그 축에 연결했는지 적습니다.\n\n4축(인덱스: 정의):\n${AXIS_DEF.map((d, i) => `${i}: ${d}`).join('\n')}`,
+        system: `대학 팀 프로젝트의 작업 기록을 MRL 3축 중 하나로 분류합니다. 평가가 아니라 분류만 합니다. 학생의 능력이나 성실성을 판단하지 마세요. reason은 한국어 한 문장으로, 기록의 어떤 부분을 근거로 그 축에 연결했는지 적습니다.\n\n3축(인덱스: 정의):\n${AXIS_DEF.map((d, i) => `${i}: ${d}`).join('\n')}`,
         messages: [{
           role: 'user',
           content: `작업 기록:\n${items
@@ -124,7 +143,11 @@ export async function classify(items) {
         const map = new Map(JSON.parse(text).items.map(x => [x.i, x]));
         return items.map((it, i) => {
           const x = map.get(i);
-          return x && x.type >= 0 && x.type < AXES.length ? { type: x.type, reason: x.reason, by: 'ai' } : { ...ruleClassify(it), by: 'rule' };
+          const rule = ruleClassify(it);
+          // AI 결과 옆에 규칙 판단도 남김 → 둘이 다르면 화면에서 '확인 필요'
+          return x && x.type >= 0 && x.type < AXES.length
+            ? { type: x.type, reason: x.reason, by: 'ai', rule_type: rule.type, prompt_version: PROMPT_VERSION }
+            : { ...rule, by: 'rule', rule_type: rule.type, prompt_version: null };
         });
       }
       console.warn('AI 분류 중단:', res.stop_reason);
@@ -132,5 +155,8 @@ export async function classify(items) {
       console.warn('AI 분류 실패, 규칙 분류로 대체:', e.message);
     }
   }
-  return items.map(it => ({ ...ruleClassify(it), by: 'rule' }));
+  return items.map(it => { const rule = ruleClassify(it); return { ...rule, by: 'rule', rule_type: rule.type, prompt_version: null }; });
 }
+
+// AI 분류가 규칙 판단과 다르고, 교수가 아직 확인하지 않은 기록
+export const needsReview = r => (r.classified_by === 'ai' || r.classified_by === 'demo') && r.rule_type != null && r.rule_type !== r.type;

@@ -67,3 +67,34 @@ test('착수·권한·동료평가 흐름', async t => {
   assert.equal(rep.scores.find(s => s.member_id === ma.id).score, 100); // 동료평가는 기여율에 미반영
   assert.equal(rep.scores.find(s => s.member_id === mb.id).score, 0);
 });
+
+test('AI 리터러시: 확인 필요 · AI 도움 표시', async t => {
+  const srv = spawn(process.execPath, ['server.js'], { env: { ...process.env, PORT: PORT + 10, DB_PATH: join(mkdtempSync(join(tmpdir(), 'hmk-')), 't.db'), ANTHROPIC_API_KEY: '' }, stdio: 'ignore' });
+  t.after(() => srv.kill());
+  const B2 = `http://localhost:${PORT + 10}/api`;
+  const c2 = async (path, key, method = 'GET', body) => {
+    const res = await fetch(B2 + path, { method, headers: { 'Content-Type': 'application/json', ...(key ? { 'X-Key': key } : {}) }, body: body && JSON.stringify(body) });
+    return { status: res.status, data: await res.json() };
+  };
+  for (let i = 0; i < 100; i++) { try { await fetch(B2 + '/join/x'); break; } catch { await new Promise(r => setTimeout(r, 50)); } }
+
+  // 시연 팀: AI·규칙 판단이 다른 기록 2건, AI 도움 기록 2건
+  const { data: d } = await c2('/demo', null, 'POST');
+  const id = d.team.id, P = d.prof_key;
+  assert.equal(d.team.needs_review, 2);
+  assert.equal(d.team.ai_assisted, 2);
+  const recs = (await c2(`/teams/${id}/records`, P)).data;
+  const flagged = recs.filter(r => r.rule_type !== r.type);
+  assert.ok(flagged.every(r => r.prompt_version === 'mrl-3axis-v2'));
+
+  // 교수가 축을 그대로 두고 저장해도 '확인 완료'로 빠짐, 원래 근거는 보존
+  const r0 = flagged[0];
+  const saved = (await c2(`/teams/${id}/records/${r0.id}`, P, 'PATCH', { type: r0.type })).data;
+  assert.equal(saved.classified_by, 'professor');
+  assert.ok(saved.reason.includes(r0.reason));
+  assert.equal((await c2(`/teams/${id}`, P)).data.needs_review, 1);
+
+  // 학생 화면에는 확인 필요 개수를 내보내지 않음
+  const sk = (await c2(`/teams/${id}`, P)).data.members[0].key;
+  assert.ok(!('needs_review' in (await c2(`/teams/${id}`, sk)).data));
+});
