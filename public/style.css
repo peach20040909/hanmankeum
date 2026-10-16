@@ -66,3 +66,16 @@
 .anon-chip{margin-left:auto;display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border-radius:999px;background:#eef2ff;color:#4558a8;font-size:11px;font-weight:700}
 .notice-strong.anon{gap:14px;align-items:center;background:#f2f5ff;border-color:#dae2fb}
 .anon-seal{display:grid;place-items:center;width:44px;height:44px;border-radius:14px;background:var(--blue);color:#fff;flex:none}
+/* AI 리터러시: AI 도움 표시 · AI·규칙 판단 비교 · AI 역할 안내 */
+.tag.violet{background:#f2efff;color:#6a54c7}
+.ai-compare{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px}
+.ai-compare div{border:1px solid #e6e9f2;border-radius:9px;padding:12px 14px;font-size:11px;color:#7a8296}
+.ai-compare strong{display:block;font-size:13px;color:#2f3646;margin-top:4px}
+.ai-compare .diff{border-color:#f3e7cc;background:#fff9ed}
+.ai-role .scope-line strong{font-size:12px}
+.ai-role .no{color:#a08756}
+.flag-group{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+@media (max-width:640px){.ai-compare{grid-template-columns:1fr}}
+.aside-stack .between{flex-wrap:wrap;gap:8px}
+.aside-stack .between h2{white-space:nowrap}
+.aside-stack .status-grid span{word-break:keep-all}

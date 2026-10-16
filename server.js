@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { randomUUID, randomBytes } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { computeScores } from './score.js';
-import { fetchGitHub, classify, AXES } from './collect.js';
+import { fetchGitHub, classify, detectAI, needsReview, AXES } from './collect.js';
 import { seedDemo } from './seed.js';
 import { verifySignature, parsePageId, ancestors, pageInfo, userInfo, KIND } from './notion.js';
 
@@ -51,8 +51,9 @@ CREATE TABLE IF NOT EXISTS peer_reviews (
 );`);
 
 // 기존 DB에 새 컬럼 추가
-for (const [table, col] of [['teams', 'notion_page'], ['teams', 'prof_key'], ['members', 'notion_email'], ['members', 'key']]) {
-  if (!db.prepare(`PRAGMA table_info(${table})`).all().some(c => c.name === col)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} TEXT`);
+for (const [table, col, type = 'TEXT'] of [['teams', 'notion_page'], ['teams', 'prof_key'], ['members', 'notion_email'], ['members', 'key'],
+  ['records', 'rule_type', 'INTEGER'], ['records', 'prompt_version'], ['records', 'ai_assisted', 'INTEGER NOT NULL DEFAULT 0'], ['records', 'ai_note']]) {
+  if (!db.prepare(`PRAGMA table_info(${table})`).all().some(c => c.name === col)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${type}`);
 }
 for (const t of db.prepare('SELECT id FROM teams WHERE prof_key IS NULL').all()) db.prepare('UPDATE teams SET prof_key = ? WHERE id = ?').run(newKey(), t.id);
 for (const m of db.prepare('SELECT id FROM members WHERE key IS NULL').all()) db.prepare('UPDATE members SET key = ? WHERE id = ?').run(newKey(), m.id);
@@ -112,6 +113,10 @@ function teamView(teamId, a) {
     accepted_opinions: db.prepare("SELECT count(*) n FROM opinions WHERE team_id = ? AND status = 'accepted'").get(teamId).n,
     record_count: db.prepare('SELECT count(*) n FROM records WHERE team_id = ?').get(teamId).n,
     unmatched: db.prepare('SELECT count(*) n FROM records WHERE team_id = ? AND member_id IS NULL').get(teamId).n,
+    ...(prof ? {
+      needs_review: db.prepare('SELECT * FROM records WHERE team_id = ?').all(teamId).filter(needsReview).length,
+      ai_assisted: db.prepare('SELECT count(*) n FROM records WHERE team_id = ? AND ai_assisted = 1').get(teamId).n,
+    } : {}),
     reviewed: a.me ? !!db.prepare('SELECT 1 FROM peer_reviews WHERE team_id = ? AND reviewer_id = ?').get(teamId, a.me.id) : null,
     review_count: prof ? db.prepare('SELECT count(DISTINCT reviewer_id) n FROM peer_reviews WHERE team_id = ?').get(teamId).n : null,
   };
@@ -239,7 +244,7 @@ const routes = [
     const known = new Set(db.prepare('SELECT ext_id FROM records WHERE team_id = ?').all(id).map(r => r.ext_id));
     let items;
     try { items = (await fetchGitHub(a.t.repo)).filter(it => !known.has(it.ext_id)); } catch (e) { fail(502, e.message); }
-    const ins = db.prepare('INSERT OR IGNORE INTO records (team_id, member_id, login, ext_id, tool, kind, title, body, url, ref, date, type, reason, classified_by) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
+    const ins = db.prepare('INSERT OR IGNORE INTO records (team_id, member_id, login, ext_id, tool, kind, title, body, url, ref, date, type, reason, classified_by, rule_type, prompt_version, ai_assisted, ai_note) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
     let ai = 0;
     for (let i = 0; i < items.length; i += 80) {
       const chunk = items.slice(i, i + 80);
@@ -247,11 +252,13 @@ const routes = [
       chunk.forEach((it, j) => {
         if (cls[j].by === 'ai') ai++;
         ins.run(id, byLogin.get((it.login || '').toLowerCase()) ?? null, it.login || null, it.ext_id, it.tool, it.kind, it.title.slice(0, 300),
-          (it.body || '').slice(0, 4000), it.url, it.ref, it.date, cls[j].type, cls[j].reason, cls[j].by);
+          (it.body || '').slice(0, 4000), it.url, it.ref, it.date, cls[j].type, cls[j].reason, cls[j].by, cls[j].rule_type, cls[j].prompt_version,
+          ...(d => [d.ai ? 1 : 0, d.note])(detectAI(it)));
       });
     }
     db.prepare("UPDATE teams SET collected_at = datetime('now') WHERE id = ?").run(id);
-    return { added: items.length, ai, team: teamView(id, a) };
+    const t2 = teamView(id, a);
+    return { added: items.length, ai, review: t2.needs_review, team: t2 };
   }],
 
   // API 연동 전 도구(Google Docs 등)의 작업을 링크로 기록. 학생은 본인 것만.
@@ -266,9 +273,13 @@ const routes = [
     const [c] = Number.isInteger(b.type) && b.type >= 0 && b.type < AXES.length
       ? [{ type: b.type, reason: '작성자가 직접 선택한 축입니다.', by: 'manual' }]
       : await classify([item]);
-    db.prepare('INSERT INTO records (team_id, member_id, ext_id, tool, kind, title, body, url, ref, date, type, reason, classified_by) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)')
+    // AI 사용은 작성자가 직접 밝힘 (예: "ChatGPT로 문장 다듬기"). 기여율에는 영향 없음
+    const aiUse = optText(b.ai_use, 200);
+    const auto = detectAI(item);
+    db.prepare('INSERT INTO records (team_id, member_id, ext_id, tool, kind, title, body, url, ref, date, type, reason, classified_by, rule_type, prompt_version, ai_assisted, ai_note) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
       .run(id, memberId, `manual:${randomUUID()}`, item.tool, item.kind, item.title, item.body, b.url || null, `${item.tool} 링크`,
-        new Date().toISOString(), c.type, c.reason, c.by);
+        new Date().toISOString(), c.type, c.reason, c.by, c.rule_type ?? null, c.prompt_version ?? null,
+        b.ai_assisted || aiUse || auto.ai ? 1 : 0, aiUse ? `작성자 표시: ${aiUse}` : b.ai_assisted ? '작성자가 AI 사용을 표시' : auto.note);
     return teamView(id, a);
   }],
 
@@ -284,7 +295,9 @@ const routes = [
     const r = db.prepare('SELECT * FROM records WHERE id = ? AND team_id = ?').get(rid, id) || fail(404, '기록이 없습니다.');
     if (b.type !== undefined) {
       if (!Number.isInteger(b.type) || b.type < 0 || b.type >= AXES.length) fail(400, '축이 올바르지 않습니다.');
-      db.prepare("UPDATE records SET type = ?, reason = ?, classified_by = 'professor' WHERE id = ?").run(b.type, '교수가 원자료를 확인하고 축을 조정했습니다.', r.id);
+      // 축을 그대로 두고 저장해도 '교수 확인'으로 남겨 확인 필요 목록에서 빠지게 함. 원래 AI 판단 근거는 이어서 보존
+      const reason = b.type === r.type ? `교수가 원자료를 확인하고 분류를 유지했습니다. (원래 근거: ${r.reason})` : `교수가 원자료를 확인하고 축을 ${AXES[r.type] ?? '미분류'} → ${AXES[b.type]}(으)로 조정했습니다.`;
+      if (r.classified_by !== 'professor' || b.type !== r.type) db.prepare("UPDATE records SET type = ?, reason = ?, classified_by = 'professor' WHERE id = ?").run(b.type, reason.slice(0, 600), r.id);
     }
     if (b.member_id !== undefined) {
       if (b.member_id !== null && !db.prepare('SELECT 1 FROM members WHERE id = ? AND team_id = ?').get(b.member_id, id)) fail(400, '팀원이 올바르지 않습니다.');

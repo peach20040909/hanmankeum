@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { ruleClassify, detectAI, PROMPT_VERSION } from './collect.js';
 
 // 본선 시연용 예시 팀 (MRL 3축: 0 만들기 · 1 다듬기 · 2 이끌기)
 const MEMBERS = [
@@ -17,10 +18,10 @@ const RECORDS = [
   [0, 'GitHub', 'Issue', '12/10까지 오류 수정 담당 배분', 2, '2026-12-06T09:30', 'Issue #40', '할 일과 담당을 등록한 이슈라 이끌기에 연결했습니다.', '- 검색 필터 버그: 박준호\n- 테스트 보강: 이다은'],
   [1, 'Notion', '문서 편집', '사용자 인터뷰를 바탕으로 요구사항 정리', 0, '2026-12-10T13:18', 'Notion · 2026-12-10', '본인이 만든 페이지의 내용을 작성해 만들기에 연결했습니다.', '사용자 요구사항 v3\n분실물 등록 시 위치와 발견 시간을 함께 입력한다.'],
   [1, 'Notion', '페이지 생성', '경쟁 서비스 조사 및 차별점 정리', 0, '2026-10-02T15:30', 'Notion · 2026-10-02', '새 페이지를 만들어 만들기에 연결했습니다.', ''],
-  [1, 'Slides', '문서 편집', '최종 발표 자료의 서비스 흐름 보완', 1, '2026-12-08T18:32', 'Slides 링크', "'보완' 키워드로 다듬기에 연결했습니다.", '03. 서비스 이용 흐름\n발견 → 등록 → 매칭 → 본인 확인 → 물품 수령'],
+  [1, 'Slides', '문서 편집', '최종 발표 자료의 서비스 흐름 보완', 1, '2026-12-08T18:32', 'Slides 링크', "'보완' 키워드로 다듬기에 연결했습니다.", '03. 서비스 이용 흐름\n발견 → 등록 → 매칭 → 본인 확인 → 물품 수령\n\n[AI] ChatGPT로 슬라이드 문장 다듬기'],
   [1, 'Notion', '페이지 생성', '12월 2주차 회의록과 담당 정리', 2, '2026-12-05T10:10', 'Notion · 2026-12-05', '회의·일정 등 관리 문서 작성이라 이끌기에 연결했습니다.', '12/08 · 발표 자료 최종 검토 · 김서연\n12/12 · 현장 세팅 확인 · 최민재'],
   [1, 'Notion', '속성 편집', '최종 시연 일정과 담당 작업 업데이트', 2, '2026-11-20T09:00', 'Notion · 2026-11-20', '일정·담당·상태 등 속성 변경을 이끌기에 연결했습니다.', ''],
-  [2, 'GitHub', 'Commit', '분실물 등록·조회 테스트 케이스 추가', 0, '2026-12-07T15:21', 'Commit a3f21d8', '새 테스트를 추가한 커밋이라 만들기에 연결했습니다.', '+ test("필수 입력이 없으면 안내를 표시한다", () => {\n+   expect(validateItem({})).toEqual("내용을 입력해 주세요");\n+ });'],
+  [2, 'GitHub', 'Commit', '분실물 등록·조회 테스트 케이스 추가', 0, '2026-12-07T15:21', 'Commit a3f21d8', '새 테스트를 추가한 커밋이라 만들기에 연결했습니다.', '+ test("필수 입력이 없으면 안내를 표시한다", () => {\n+   expect(validateItem({})).toEqual("내용을 입력해 주세요");\n+ });\n\nCo-authored-by: Claude <noreply@anthropic.com>'],
   [2, 'GitHub', 'Commit', 'fix: 상세 화면 이동 오류 수정', 1, '2026-12-04T17:45', 'Commit c82e4a1', "'fix' 키워드로 다듬기에 연결했습니다.", '- navigate(`/item/${id}`)\n+ navigate(`/items/${id}`)'],
   [2, 'GitHub', '리뷰 댓글', '검색 조건이 비었을 때 처리도 필요해 보여요', 1, '2026-12-09T21:02', '리뷰 댓글 · search.js', '코드 리뷰 과정에서 남긴 댓글이라 다듬기에 연결했습니다.', ''],
   [2, 'Notion', '문서 편집', '기술 명세서의 매칭 기준 오탈자 보완', 1, '2026-12-03T14:02', 'Notion · 2026-12-03', '다른 팀원이 만든 페이지를 편집해 다듬기에 연결했습니다.', ''],
@@ -49,8 +50,12 @@ export function seedDemo(db, newKey) {
   const ids = MEMBERS.map(([name, role, github, email]) =>
     db.prepare("INSERT INTO members (team_id, name, role, github, notion_email, key, confirmed_at) VALUES (?,?,?,?,?,?, '2026-09-10 09:30:00')")
       .run(id, name, role, github, email, newKey()).lastInsertRowid);
-  const ins = db.prepare("INSERT INTO records (team_id, member_id, ext_id, tool, kind, title, body, ref, date, type, reason, classified_by) VALUES (?,?,?,?,?,?,?,?,?,?,?, 'demo')");
-  const recIds = RECORDS.map(([m, tool, kind, title, type, date, ref, reason, body], i) => ins.run(id, ids[m], `demo:${i}`, tool, kind, title, body, ref, date, type, reason).lastInsertRowid);
+  const ins = db.prepare("INSERT INTO records (team_id, member_id, ext_id, tool, kind, title, body, ref, date, type, reason, classified_by, rule_type, prompt_version, ai_assisted, ai_note) VALUES (?,?,?,?,?,?,?,?,?,?,?, 'demo', ?,?,?,?)");
+  // 규칙 판단을 함께 남겨 'AI·규칙 판단이 다른 기록(확인 필요)'과 'AI 도움 기록'이 시연에 보이게 함
+  const recIds = RECORDS.map(([m, tool, kind, title, type, date, ref, reason, body], i) => {
+    const d = detectAI({ title, body });
+    return ins.run(id, ids[m], `demo:${i}`, tool, kind, title, body, ref, date, type, reason, ruleClassify({ kind, title }).type, PROMPT_VERSION, d.ai ? 1 : 0, d.note).lastInsertRowid;
+  });
   for (const [m, text, status, reply] of OPINIONS) db.prepare('INSERT INTO opinions (team_id, member_id, text, status, reply) VALUES (?,?,?,?,?)').run(id, ids[m], text, status, reply);
   db.prepare("INSERT INTO statements (team_id, member_id, text, created_at) VALUES (?,?,?, '2026-12-16 11:00:00')")
     .run(id, ids[3], '기말 시연용 하드웨어(라즈베리파이 키오스크) 조립과 현장 세팅을 맡았고, 11/28과 12/5 오프라인 리허설을 진행했습니다. 코드 작업은 팀원 노트북에서 함께해서 제 계정 커밋으로 남지 않았습니다.');
