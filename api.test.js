@@ -66,6 +66,17 @@ test('착수·권한·동료평가 흐름', async t => {
   assert.ok(!('reviewer_id' in rep.reviews[0]));
   assert.equal(rep.scores.find(s => s.member_id === ma.id).score, 100); // 동료평가는 기여율에 미반영
   assert.equal(rep.scores.find(s => s.member_id === mb.id).score, 0);
+
+  // 첨부: Vercel 본문 한도(4.5MB) 때문에 파일당 3MB까지. 본인 첨부만 열람
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
+  const over = await call(`/teams/${id}/statements`, kb, 'POST', { text: '큰 첨부', files: [{ name: 'b.png', mime: 'image/png', data: Buffer.alloc(3 * 1024 * 1024 + 10).toString('base64') }] });
+  assert.equal(over.status, 400);
+  assert.match(over.data.error, /3MB/);
+  const ok = await call(`/teams/${id}/statements`, ka, 'POST', { text: '오프라인 리허설 진행', files: [{ name: 'a.png', mime: 'image/png', data: png.toString('base64') }] });
+  assert.equal(ok.status, 200);
+  const fileId = ok.data.statements[0].files[0].id;
+  assert.equal((await fetch(`${B}/files/${fileId}?k=${encodeURIComponent(ka)}`)).status, 200);
+  assert.equal((await fetch(`${B}/files/${fileId}?k=${encodeURIComponent(kb)}`)).status, 403); // 남의 첨부
 });
 
 test('AI 리터러시: 확인 필요 · AI 도움 표시', async t => {
