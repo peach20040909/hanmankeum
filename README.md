@@ -57,20 +57,46 @@ AI는 기록을 **분류만** 하고, 판단은 사람이 합니다. AI 결과�
 - 학생: 본인 의견/자기 기술만 보임 · 학기 중 기록·점수 비공개
 - 익명 동료평가: **교수 화면에도 이름 대신 '익명 A·B·C'로만 표시**. 계정 연결은 중복 제출 방지·소명용으로 DB에만 남음 — 제출 전 화면에 명시
 
-## 실행
+## 실행 (로컬)
 
-Node.js 22.13 이상 (내장 SQLite 사용)
+Node.js 22.13 이상. 환경변수가 없으면 로컬 파일 `hanmankeum.db`(libSQL)로 동작합니다.
 
 ```bash
 npm install
-cp .env.example .env   # 선택: GITHUB_TOKEN, ANTHROPIC_API_KEY, NOTION_*
+cp .env.example .env   # 전부 선택 사항
 npm start              # http://localhost:3000
 npm test
 ```
 
-- `GITHUB_TOKEN` — 비공개 저장소 수집, API 한도 확대 (없으면 공개 저장소만, 시간당 60회)
-- `ANTHROPIC_API_KEY` — Claude로 작업 기록을 MRL 3축에 분류 (없으면 규칙 분류)
-- `NOTION_TOKEN`, `NOTION_WEBHOOK_SECRET` — Notion 웹훅 수집 (아래 참고)
+## 환경변수
+
+| 이름 | 용도 | 없으면 |
+|---|---|---|
+| `TURSO_DATABASE_URL` | Turso(libSQL) 데이터베이스 주소 (`libsql://...`) | 로컬 파일 `file:hanmankeum.db` |
+| `TURSO_AUTH_TOKEN` | Turso 접근 토큰 | 로컬 파일은 토큰 없이 동작 |
+| `ANTHROPIC_API_KEY` | Claude로 기록을 MRL 3축 분류 · 요약 · 초안 생성 | 규칙 분류로 대체, 요약·초안은 생성 안 함 |
+| `GITHUB_TOKEN` | 비공개 저장소 수집, API 한도 확대 | 공개 저장소만, 시간당 60회 |
+| `NOTION_TOKEN` | Notion 페이지·사용자 조회 | 웹훅 이벤트를 기록으로 만들지 못함 |
+| `NOTION_WEBHOOK_SECRET` | Notion 웹훅 서명 검증 | 웹훅 요청을 모두 거부 |
+
+## 배포 (Vercel + Turso)
+
+정적 화면은 `public/`에서 바로 서빙되고, `/api/*`는 `api/index.js` 함수 하나가 받습니다(`vercel.json` rewrites). 서버리스 함수는 요청마다 새로 뜨기 때문에 파일 DB를 쓸 수 없어 DB는 Turso(libSQL)를 씁니다.
+
+1. **Turso DB 생성 · 토큰 발급**
+
+   ```bash
+   turso db create hanmankeum
+   turso db show hanmankeum --url      # TURSO_DATABASE_URL
+   turso db tokens create hanmankeum   # TURSO_AUTH_TOKEN
+   ```
+
+2. **Vercel 프로젝트 연결** — 대시보드에서 이 저장소를 Import 하거나 `vercel link`. 프레임워크는 "Other", 빌드 명령 없음.
+3. **환경변수 입력** — 위 표의 값을 Production·Preview에 등록하고 재배포.
+4. **Notion 웹훅 URL 변경** — 구독 URL을 `https://<vercel-주소>/api/webhooks/notion`으로 바꾸고 다시 Verify.
+
+- 스키마 생성과 컬럼 추가는 서버가 시작할 때 자동으로 실행됩니다(`db.js`의 `init()`).
+- 함수 실행 한도는 60초(`vercel.json`), 요청 본문 한도는 Vercel 기본 4.5MB라 자기 기술 첨부는 **파일당 3MB · 최대 5개**입니다.
 
 ## Notion 웹훅 수집
 
@@ -99,7 +125,10 @@ Notion API 조회는 블록마다 **마지막 편집자**만 알려주고 편집
 ## 구조
 
 ```
-server.js    HTTP API + SQLite (node:sqlite), 초대 키 권한
+handler.js   API 핸들러 (Web 표준 Request/Response), 초대 키 권한
+server.js    로컬 실행용 node:http 어댑터 + 정적 파일
+api/index.js Vercel 함수 진입점 (app.js의 handle을 그대로 사용)
+db.js        libSQL(Turso) 연결 · 스키마 · 컬럼 마이그레이션
 collect.js   MRL 3축 정의 · GitHub 수집 · Claude/규칙 분류 · AI 사용 감지
 notion.js    Notion 웹훅 서명 검증 · 페이지/사용자 조회
 score.js     기여율 산식

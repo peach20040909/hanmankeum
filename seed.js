@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { run } from './db.js';
 import { ruleClassify, detectAI, PROMPT_VERSION } from './collect.js';
 
 // 본선 시연용 예시 팀 (MRL 3축: 0 만들기 · 1 다듬기 · 2 이끌기)
@@ -42,24 +43,31 @@ const REVIEWS = [
   [3, 2, 1, '테스트를 추가하고 오류를 여러 번 고쳤습니다.', '산출물 확인', null],
 ];
 
-export function seedDemo(db, newKey) {
+export async function seedDemo(newKey) {
   const id = randomUUID();
-  db.prepare(`INSERT INTO teams (id, course, name, project, start_date, deadline, repo, tools, categories, weights, locked_at, closed_at, collected_at, prof_key)
-    VALUES (?, '캡스톤디자인(2)', '팀 3', '캠퍼스 분실물 매칭 앱', '2026-09-07', '2026-12-15', NULL, ?, ?, ?, '2026-09-11 10:00:00', '2026-12-15 23:59:59', '2026-12-15 23:59:59', ?)`)
-    .run(id, JSON.stringify(['GitHub', 'Notion', '수동 기록']), JSON.stringify(['만들기', '다듬기', '이끌기']), JSON.stringify([45, 35, 20]), newKey());
-  const ids = MEMBERS.map(([name, role, github, email]) =>
-    db.prepare("INSERT INTO members (team_id, name, role, github, notion_email, key, confirmed_at) VALUES (?,?,?,?,?,?, '2026-09-10 09:30:00')")
-      .run(id, name, role, github, email, newKey()).lastInsertRowid);
-  const ins = db.prepare("INSERT INTO records (team_id, member_id, ext_id, tool, kind, title, body, ref, date, type, reason, classified_by, rule_type, prompt_version, ai_assisted, ai_note) VALUES (?,?,?,?,?,?,?,?,?,?,?, 'demo', ?,?,?,?)");
+  await run(`INSERT INTO teams (id, course, name, project, start_date, deadline, repo, tools, categories, weights, locked_at, closed_at, collected_at, prof_key)
+    VALUES (?, '캡스톤디자인(2)', '팀 3', '캠퍼스 분실물 매칭 앱', '2026-09-07', '2026-12-15', NULL, ?, ?, ?, '2026-09-11 10:00:00', '2026-12-15 23:59:59', '2026-12-15 23:59:59', ?)`,
+    id, JSON.stringify(['GitHub', 'Notion', '수동 기록']), JSON.stringify(['만들기', '다듬기', '이끌기']), JSON.stringify([45, 35, 20]), newKey());
+  const ids = [];
+  for (const [name, role, github, email] of MEMBERS) {
+    const { lastInsertRowid } = await run("INSERT INTO members (team_id, name, role, github, notion_email, key, confirmed_at) VALUES (?,?,?,?,?,?, '2026-09-10 09:30:00')",
+      id, name, role, github, email, newKey());
+    ids.push(lastInsertRowid);
+  }
   // 규칙 판단을 함께 남겨 'AI·규칙 판단이 다른 기록(확인 필요)'과 'AI 도움 기록'이 시연에 보이게 함
-  const recIds = RECORDS.map(([m, tool, kind, title, type, date, ref, reason, body], i) => {
+  const recIds = [];
+  for (const [i, [m, tool, kind, title, type, date, ref, reason, body]] of RECORDS.entries()) {
     const d = detectAI({ title, body });
-    return ins.run(id, ids[m], `demo:${i}`, tool, kind, title, body, ref, date, type, reason, ruleClassify({ kind, title }).type, PROMPT_VERSION, d.ai ? 1 : 0, d.note).lastInsertRowid;
-  });
-  for (const [m, text, status, reply] of OPINIONS) db.prepare('INSERT INTO opinions (team_id, member_id, text, status, reply) VALUES (?,?,?,?,?)').run(id, ids[m], text, status, reply);
-  db.prepare("INSERT INTO statements (team_id, member_id, text, created_at) VALUES (?,?,?, '2026-12-16 11:00:00')")
-    .run(id, ids[3], '기말 시연용 하드웨어(라즈베리파이 키오스크) 조립과 현장 세팅을 맡았고, 11/28과 12/5 오프라인 리허설을 진행했습니다. 코드 작업은 팀원 노트북에서 함께해서 제 계정 커밋으로 남지 않았습니다.');
-  const rv = db.prepare("INSERT INTO peer_reviews (team_id, reviewer_id, target_id, period, axis, did, basis, record_id) VALUES (?,?,?, '전체 기간', ?,?,?,?)");
-  for (const [from, to, axis, did, basis, rec] of REVIEWS) rv.run(id, ids[from], ids[to], axis, did, basis, rec == null ? null : recIds[rec]);
+    const { lastInsertRowid } = await run("INSERT INTO records (team_id, member_id, ext_id, tool, kind, title, body, ref, date, type, reason, classified_by, rule_type, prompt_version, ai_assisted, ai_note) VALUES (?,?,?,?,?,?,?,?,?,?,?, 'demo', ?,?,?,?)",
+      id, ids[m], `demo:${i}`, tool, kind, title, body, ref, date, type, reason, ruleClassify({ kind, title }).type, PROMPT_VERSION, d.ai ? 1 : 0, d.note);
+    recIds.push(lastInsertRowid);
+  }
+  for (const [m, text, status, reply] of OPINIONS) await run('INSERT INTO opinions (team_id, member_id, text, status, reply) VALUES (?,?,?,?,?)', id, ids[m], text, status, reply);
+  await run("INSERT INTO statements (team_id, member_id, text, created_at) VALUES (?,?,?, '2026-12-16 11:00:00')",
+    id, ids[3], '기말 시연용 하드웨어(라즈베리파이 키오스크) 조립과 현장 세팅을 맡았고, 11/28과 12/5 오프라인 리허설을 진행했습니다. 코드 작업은 팀원 노트북에서 함께해서 제 계정 커밋으로 남지 않았습니다.');
+  for (const [from, to, axis, did, basis, rec] of REVIEWS) {
+    await run("INSERT INTO peer_reviews (team_id, reviewer_id, target_id, period, axis, did, basis, record_id) VALUES (?,?,?, '전체 기간', ?,?,?,?)",
+      id, ids[from], ids[to], axis, did, basis, rec == null ? null : recIds[rec]);
+  }
   return id;
 }
