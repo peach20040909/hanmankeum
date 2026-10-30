@@ -79,3 +79,22 @@
 .aside-stack .between{flex-wrap:wrap;gap:8px}
 .aside-stack .between h2{white-space:nowrap}
 .aside-stack .status-grid span{word-break:keep-all}
+/* 생성형 AI: 근거 인용 요약 · 자기 기술 초안 */
+.summary-list{margin:14px 0 0;padding-left:20px;display:grid;gap:12px}
+.summary-line p{font-size:13.5px;line-height:1.7;margin-bottom:6px}
+.summary-line.objected p{text-decoration:underline wavy #e0a84a;text-underline-offset:4px}
+.ref-chip{display:inline-flex;align-items:center;gap:4px;padding:2px 9px;border-radius:999px;border:1px solid #d9e2fb;background:var(--blue-light);color:var(--blue-dark);font-size:11px;font-weight:600}
+.ref-chip:hover{border-color:var(--blue)}
+.objection{display:flex;gap:6px;align-items:flex-start;margin-top:6px;padding:8px 10px;border-radius:8px;background:var(--amber-light);color:#7d5a1f;font-size:12px}
+.verify-box{margin-top:16px;padding:12px 14px;border-radius:10px;background:#f7f8fc;border:1px solid var(--line);font-size:12px}
+.verify-head{display:flex;gap:8px;align-items:center}
+.dropped{margin-top:8px}
+.dropped summary{cursor:pointer;color:#5d6475;font-size:12px}
+.dropped-item{display:grid;gap:2px;padding:8px 0;border-top:1px dashed #e3e5ee;font-size:12px}
+.dropped-item s{color:#9aa0ad}
+.dropped-item span{color:#b45e2a;font-weight:600}
+.tag.violet{background:#f1effd;color:#6a63c7}
+.draft-box{margin-top:12px;padding:14px;border-radius:10px;border:1px dashed #cfd4ea;background:#fbfbfe}
+.check-line{display:flex;gap:8px;align-items:flex-start;margin-top:14px;font-size:12.5px;line-height:1.6}
+.check-line input{margin-top:3px;width:16px;height:16px;flex:none}
+.step-label{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;color:var(--blue-dark);margin-bottom:8px}

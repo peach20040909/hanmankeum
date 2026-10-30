@@ -5,6 +5,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { computeScores } from './score.js';
 import { fetchGitHub, classify, detectAI, needsReview, AXES } from './collect.js';
 import { seedDemo } from './seed.js';
+import { summarize, draftStatement, draftText, compareDraft } from './generate.js';
 import { verifySignature, parsePageId, ancestors, pageInfo, userInfo, KIND } from './notion.js';
 
 const db = new DatabaseSync(process.env.DB_PATH || 'hanmankeum.db');
@@ -48,11 +49,24 @@ CREATE TABLE IF NOT EXISTS peer_reviews (
   period TEXT NOT NULL, axis INTEGER NOT NULL, did TEXT, impact TEXT, basis TEXT NOT NULL,
   link TEXT, record_id INTEGER REFERENCES records(id) ON DELETE SET NULL, note TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')), UNIQUE(team_id, reviewer_id, target_id)
+);
+CREATE TABLE IF NOT EXISTS summaries (
+  id INTEGER PRIMARY KEY, team_id TEXT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  member_id INTEGER NOT NULL REFERENCES members(id) ON DELETE CASCADE, sentences TEXT NOT NULL, dropped TEXT NOT NULL,
+  generated INTEGER NOT NULL, by TEXT NOT NULL, prompt_version TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(team_id, member_id)
+);
+CREATE TABLE IF NOT EXISTS drafts (
+  id INTEGER PRIMARY KEY, team_id TEXT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  member_id INTEGER NOT NULL REFERENCES members(id) ON DELETE CASCADE, text TEXT NOT NULL, sentences TEXT NOT NULL,
+  dropped TEXT NOT NULL, generated INTEGER NOT NULL, by TEXT NOT NULL, prompt_version TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')), UNIQUE(team_id, member_id)
 );`);
 
 // 기존 DB에 새 컬럼 추가
 for (const [table, col, type = 'TEXT'] of [['teams', 'notion_page'], ['teams', 'prof_key'], ['members', 'notion_email'], ['members', 'key'],
-  ['records', 'rule_type', 'INTEGER'], ['records', 'prompt_version'], ['records', 'ai_assisted', 'INTEGER NOT NULL DEFAULT 0'], ['records', 'ai_note']]) {
+  ['records', 'rule_type', 'INTEGER'], ['records', 'prompt_version'], ['records', 'ai_assisted', 'INTEGER NOT NULL DEFAULT 0'], ['records', 'ai_note'],
+  ['statements', 'ai_draft'], ['statements', 'draft_checked', 'INTEGER NOT NULL DEFAULT 0'], ['statements', 'draft_diff']]) {
   if (!db.prepare(`PRAGMA table_info(${table})`).all().some(c => c.name === col)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${type}`);
 }
 for (const t of db.prepare('SELECT id FROM teams WHERE prof_key IS NULL').all()) db.prepare('UPDATE teams SET prof_key = ? WHERE id = ?').run(newKey(), t.id);
@@ -100,16 +114,19 @@ function teamView(teamId, a) {
   const prof = a.role === 'professor';
   const members = db.prepare('SELECT * FROM members WHERE team_id = ? ORDER BY id').all(teamId)
     .map(({ key, ...m }) => (prof ? { ...m, key } : m));
-  const statements = db.prepare('SELECT id, member_id, text, created_at FROM statements WHERE team_id = ?').all(teamId)
+  const statements = db.prepare('SELECT id, member_id, text, created_at, ai_draft, draft_checked, draft_diff FROM statements WHERE team_id = ?').all(teamId)
     .filter(s => prof || s.member_id === a.me.id)
-    .map(s => ({ ...s, files: db.prepare('SELECT id, name, mime FROM files WHERE statement_id = ?').all(s.id) }));
+    .map(s => ({ ...s, draft_diff: s.draft_diff ? JSON.parse(s.draft_diff) : null, files: db.prepare('SELECT id, name, mime FROM files WHERE statement_id = ?').all(s.id) }));
+  const parse = r => r && ({ ...r, sentences: JSON.parse(r.sentences), dropped: JSON.parse(r.dropped) });
+  const summaries = db.prepare('SELECT * FROM summaries WHERE team_id = ?').all(teamId).filter(s => prof || s.member_id === a.me.id).map(parse);
+  const draft = a.me ? parse(db.prepare('SELECT * FROM drafts WHERE team_id = ? AND member_id = ?').get(teamId, a.me.id)) : null;
   const opinions = db.prepare('SELECT * FROM opinions WHERE team_id = ? ORDER BY id').all(teamId).filter(o => prof || o.member_id === a.me.id);
   const { prof_key, ...rest } = t;
   return {
     ...rest, ...(prof ? { prof_key } : {}),
     role: a.role, me_id: a.me?.id ?? null,
     tools: JSON.parse(t.tools), categories: AXES, weights: JSON.parse(t.weights), closed: isClosed(t),
-    members, statements, opinions,
+    members, statements, opinions, summaries, draft,
     accepted_opinions: db.prepare("SELECT count(*) n FROM opinions WHERE team_id = ? AND status = 'accepted'").get(teamId).n,
     record_count: db.prepare('SELECT count(*) n FROM records WHERE team_id = ?').get(teamId).n,
     unmatched: db.prepare('SELECT count(*) n FROM records WHERE team_id = ? AND member_id IS NULL').get(teamId).n,
@@ -332,8 +349,55 @@ const routes = [
       if (!data.length || data.length > MAX_FILE) fail(400, '파일은 5MB 이하여야 합니다.');
       return { name: String(f.name || 'file').slice(0, 100), mime: f.mime, data };
     });
-    const { lastInsertRowid: sid } = db.prepare('INSERT INTO statements (team_id, member_id, text) VALUES (?,?,?)').run(id, a.me.id, text(b.text, 1000, '서술'));
+    const body = text(b.text, 1000, '서술');
+    // AI 초안을 받았다면: 학생이 기록과 대조했다는 확인이 있어야 제출. 초안과 제출본의 차이를 함께 저장
+    const draft = db.prepare('SELECT text FROM drafts WHERE team_id = ? AND member_id = ?').get(id, a.me.id);
+    if (draft && b.checked !== true) fail(400, 'AI 초안의 문장을 내 기록과 대조해 확인했다고 체크해 주세요.');
+    const { lastInsertRowid: sid } = db.prepare('INSERT INTO statements (team_id, member_id, text, ai_draft, draft_checked, draft_diff) VALUES (?,?,?,?,?,?)')
+      .run(id, a.me.id, body, draft?.text ?? null, draft ? 1 : 0, draft ? JSON.stringify(compareDraft(draft.text, body)) : null);
     for (const f of decoded) db.prepare('INSERT INTO files (statement_id, name, mime, data) VALUES (?,?,?,?)').run(sid, f.name, f.mime, f.data);
+    return teamView(id, a);
+  }],
+
+  // 생성형 AI ①: 근거 인용 기여 요약 (마감 후). 학생은 본인 것만, 교수는 팀원 누구나. 다시 만들면 이전 요약·이의는 교체
+  ['POST', /^\/api\/teams\/([\w-]+)\/members\/(\d+)\/summary$/, async ([id, mid], _, req) => {
+    const a = authorize(req, id);
+    if (!isClosed(a.t)) fail(409, '요약은 마감 후 만들 수 있습니다.');
+    if (a.role === 'student' && a.me.id !== Number(mid)) fail(403, '본인 요약만 만들 수 있습니다.');
+    const m = db.prepare('SELECT * FROM members WHERE id = ? AND team_id = ?').get(mid, id) || fail(404, '팀원을 찾을 수 없습니다.');
+    const prev = db.prepare('SELECT sentences FROM summaries WHERE team_id = ? AND member_id = ?').get(id, m.id);
+    if (prev && JSON.parse(prev.sentences).some(x => x.objection)) fail(409, '학생 이의가 남아 있는 요약은 다시 만들 수 없습니다. 이의를 먼저 확인해 주세요.');
+    const records = db.prepare('SELECT * FROM records WHERE team_id = ? AND member_id = ? ORDER BY date').all(id, m.id);
+    if (!records.length) fail(409, '연결된 작업 기록이 없어 요약할 수 없습니다. 자기 기술과 동료평가로 확인해 주세요.');
+    const g = await summarize(m, records);
+    db.prepare('INSERT OR REPLACE INTO summaries (team_id, member_id, sentences, dropped, generated, by, prompt_version) VALUES (?,?,?,?,?,?,?)')
+      .run(id, m.id, JSON.stringify(g.kept), JSON.stringify(g.dropped), g.generated, g.by, g.prompt_version);
+    return teamView(id, a);
+  }],
+
+  // 학생이 요약 문장에 이의 표시 (AI 결과를 그대로 받아들이지 않도록). 교수 리포트에 함께 보임
+  ['POST', /^\/api\/teams\/([\w-]+)\/summary\/objection$/, ([id], b, req) => {
+    const a = studentOnly(authorize(req, id));
+    const row = db.prepare('SELECT * FROM summaries WHERE team_id = ? AND member_id = ?').get(id, a.me.id) || fail(404, '요약이 없습니다.');
+    const sentences = JSON.parse(row.sentences);
+    const s = sentences[b.index] || fail(400, '문장을 찾을 수 없습니다.');
+    const note = optText(b.text, 300);
+    if (note) Object.assign(s, { objection: note, objected_at: new Date().toISOString() }); else { delete s.objection; delete s.objected_at; }
+    db.prepare('UPDATE summaries SET sentences = ? WHERE id = ?').run(JSON.stringify(sentences), row.id);
+    return teamView(id, a);
+  }],
+
+  // 생성형 AI ②: 자기 기술 초안 (학생 본인, 마감 후·제출 전). 초안은 서버에 보관해 제출본과 비교
+  ['POST', /^\/api\/teams\/([\w-]+)\/draft$/, async ([id], _, req) => {
+    const a = studentOnly(authorize(req, id));
+    if (!isClosed(a.t)) fail(409, '마감 후 만들 수 있습니다.');
+    if (db.prepare('SELECT 1 FROM statements WHERE team_id = ? AND member_id = ?').get(id, a.me.id)) fail(409, '이미 자기 기술을 제출했습니다.');
+    const records = db.prepare('SELECT * FROM records WHERE team_id = ? AND member_id = ? ORDER BY date').all(id, a.me.id);
+    if (!records.length) fail(409, '연결된 작업 기록이 없어 초안을 만들 수 없습니다. 직접 작성해 주세요.');
+    const g = await draftStatement(a.me, records);
+    if (!g.kept.length) fail(422, '근거 확인을 통과한 문장이 없어 초안을 만들지 못했습니다. 직접 작성해 주세요.');
+    db.prepare('INSERT OR REPLACE INTO drafts (team_id, member_id, text, sentences, dropped, generated, by, prompt_version) VALUES (?,?,?,?,?,?,?,?)')
+      .run(id, a.me.id, draftText(g.kept, records), JSON.stringify(g.kept), JSON.stringify(g.dropped), g.generated, g.by, g.prompt_version);
     return teamView(id, a);
   }],
 
