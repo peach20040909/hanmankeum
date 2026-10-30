@@ -4,7 +4,7 @@
 
 흩어진 팀 프로젝트 작업 기록(GitHub · Notion · Docs)을 모아, 교수님이 **근거와 함께** 기여를 확인하는 웹 서비스입니다.
 
-[서비스 시연](https://hanmankeum.onrender.com/) · [장민준 포트폴리오](https://jmj-archive-portfolio.ai.studio/)
+[서비스 시연][(https://hanmankeum.vercel.app/)] 
 
 ## 포트폴리오 소개
 
