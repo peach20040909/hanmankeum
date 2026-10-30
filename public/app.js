@@ -184,7 +184,7 @@ function render() {
 
 // ---------- views ----------
 function homeView() {
-  const tiles = state.teams.map(t => `<div class="card project-tile"><a class="flex gap16" style="flex:1;min-width:0" href="#/team/${t.id}"><span class="project-icon">${icon('users', 'lg')}</span><div><h2>${esc(t.project)}</h2><div class="project-meta"><span>${esc(t.course)}</span><span class="sep"></span><span>${esc(t.name)} · ${t.members.length}명</span><span class="sep"></span><span>${t.role === 'professor' ? '교수' : `학생 · ${esc(t.members.find(m => m.id === t.me_id)?.name)}`}</span></div></div><div class="right flex gap16">${t.closed ? tag('마감', 'green') : t.locked_at ? tag('진행 중', 'blue') : tag('착수 설정 중', 'amber')}${icon('chevron')}</div></a>${t.role === 'professor' ? `<button class="icon-button" data-action="delete-team" data-id="${t.id}" data-name="${esc(t.project)} · ${esc(t.name)}" aria-label="팀 삭제" title="팀 삭제">${icon('close')}</button>` : ''}</div>`).join('');
+  const tiles = state.teams.map(t => `<div class="card project-tile"><a class="flex gap16" style="flex:1;min-width:0" href="#/team/${t.id}"><span class="project-icon">${icon('users', 'lg')}</span><div><h2>${esc(t.project)}</h2><div class="project-meta"><span>${esc(t.course)}</span><span class="sep"></span><span>${esc(t.name)} · ${t.members.length}명</span><span class="sep"></span><span>${t.role === 'professor' ? '교수' : `학생 · ${esc(t.members.find(m => m.id === t.me_id)?.name)}`}</span></div></div><div class="right flex gap16">${t.closed ? tag('마감', 'green') : t.locked_at ? tag('진행 중', 'blue') : tag('착수 설정 중', 'amber')}${icon('chevron')}</div></a><button class="icon-button" data-action="${t.role === 'professor' ? 'delete-team' : 'forget-team'}" data-id="${t.id}" data-name="${esc(t.project)} · ${esc(t.name)}" aria-label="${t.role === 'professor' ? '팀 삭제' : '목록에서 제거'}" title="${t.role === 'professor' ? '팀 삭제' : '목록에서 제거'}">${icon('close')}</button></div>`).join('');
   return `<div class="list-projects"><div class="flex gap8"><button class="button primary" data-action="new-team">${icon('users', 'sm')} 새 팀 프로젝트 만들기 (교수)</button><button class="button soft" data-action="demo">시연용 예시 팀 불러오기</button></div>${tiles || `<div class="card empty">${icon('folder', 'lg')}<p class="mt16">아직 이 브라우저에 연결된 팀이 없습니다.<br>교수님은 새 팀을 만들고, 학생은 받은 초대 링크로 들어오세요.</p></div>`}</div>`;
 }
 
@@ -468,6 +468,13 @@ document.addEventListener('click', e => {
     case 'delete-team':
       openModal('팀 프로젝트를 삭제할까요?', 'DELETE / 삭제', `<p class="offline-story"><strong>${esc(b.dataset.name)}</strong></p><div class="notice-amber mt16">팀원·수집된 기록·동의·의견·자기 기술·동료평가·첨부 파일이 모두 삭제되며 되돌릴 수 없습니다.</div>`, '', false, `<div class="flex gap8"><button class="button small" data-action="close-modal">취소</button><button class="button primary small" style="background:#c2410c;border-color:#c2410c" data-action="confirm-delete" data-id="${esc(b.dataset.id)}">삭제</button></div>`);
       break;
+    case 'forget-team':
+      openModal('목록에서 제거할까요?', '', `<p class="offline-story"><strong>${esc(b.dataset.name)}</strong></p><div class="notice-amber mt16">이 브라우저의 목록에서만 사라집니다. 팀과 기록은 그대로 남고, 초대 링크로 다시 들어올 수 있습니다.</div>`, '', false, `<div class="flex gap8"><button class="button small" data-action="close-modal">취소</button><button class="button primary small" data-action="confirm-forget" data-id="${esc(b.dataset.id)}">제거</button></div>`);
+      break;
+    case 'confirm-forget': {
+      delete keys[b.dataset.id]; saveKeys(); closeModal(); route(); notify('목록에서 제거했습니다.');
+      break;
+    }
     case 'confirm-delete': run(async () => {
       const tid = b.dataset.id;
       await api(`/teams/${tid}`, { method: 'DELETE' }, tid);
