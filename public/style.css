@@ -98,3 +98,58 @@
 .check-line{display:flex;gap:8px;align-items:flex-start;margin-top:14px;font-size:12.5px;line-height:1.6}
 .check-line input{margin-top:3px;width:16px;height:16px;flex:none}
 .step-label{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;color:var(--blue-dark);margin-bottom:8px}
+
+/* ────────── 다듬기: Swiss 미니멀 (토큰·타이포·간격) ────────── */
+:root{
+  --ink:#1e2434;--muted:#6b7385;--faint:#9aa1b2;
+  --line:#e8eaf0;--line-soft:#f1f2f7;
+  --bg:#f7f8fb;--surface:#fff;
+  --blue:#2f63e8;--blue-dark:#2550c4;--blue-light:#eef3fe;
+  --radius:14px;--radius-sm:9px;
+  --shadow:0 1px 2px rgba(22,28,48,.04);
+  --shadow-lift:0 8px 28px rgba(22,28,48,.10);
+}
+body{font-family:"Pretendard Variable","Pretendard","Noto Sans KR","Malgun Gothic",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  font-size:14px;line-height:1.65;letter-spacing:-.011em;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+h1{font-size:26px;font-weight:800;letter-spacing:-.035em;line-height:1.3}
+h2{font-size:16.5px;font-weight:700;letter-spacing:-.022em}
+h3{font-size:14px;font-weight:700;letter-spacing:-.015em}
+.page-subtitle,.card-desc,.caption-note{color:var(--muted);letter-spacing:-.008em}
+.card{border:1px solid var(--line);box-shadow:var(--shadow);border-radius:var(--radius)}
+.card:hover{border-color:var(--line)}
+.button{border-radius:var(--radius-sm);font-weight:600;letter-spacing:-.01em;transition:background .18s ease,border-color .18s ease,color .18s ease}
+.button.primary{box-shadow:0 1px 2px rgba(47,99,232,.24)}
+.button.ghost{background:transparent;border:1px dashed #d5dae6;color:var(--muted)}
+.button.ghost:hover{border-color:var(--blue);color:var(--blue-dark);background:var(--blue-light)}
+.input,.textarea,.select-control{border-radius:var(--radius-sm);border-color:#dfe3ec;transition:border-color .15s ease,box-shadow .15s ease}
+.input:hover,.textarea:hover,.select-control:hover{border-color:#c7cfe0}
+.input:focus,.textarea:focus,.select-control:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 3px rgba(47,99,232,.14)}
+.field{font-size:12.5px;font-weight:600;color:#50586b;letter-spacing:-.005em}
+.field .opt{font-weight:500;color:var(--faint);font-size:11.5px;margin-left:3px}
+.form-grid{gap:16px}
+.stack-sm{display:grid;gap:8px}
+.member-row{grid-template-columns:1fr 36px;gap:8px;margin-bottom:0}
+.tag{font-weight:600;letter-spacing:-.005em;border-radius:7px}
+.nav-item{border-radius:9px;font-weight:600}
+.nav-item.active{background:var(--blue-light);color:var(--blue-dark)}
+.nav-item.active .icon{color:var(--blue)}
+.modal{border-radius:18px;box-shadow:var(--shadow-lift);border:1px solid var(--line)}
+.modal-header{padding-bottom:14px;border-bottom:1px solid var(--line-soft)}
+.modal-header h2{font-size:20px;font-weight:800;letter-spacing:-.03em}
+.modal-eyebrow:empty{display:none}
+.modal-body{padding-top:20px}
+.modal-footer{border-top:1px solid var(--line-soft)}
+.project-strip{border:1px solid var(--line);box-shadow:none}
+.setup-step,.chart-card,.card-pad{padding:24px}
+.contribution-row:hover{background:#fafbfe}
+.score{letter-spacing:-.04em;font-weight:800}
+.app-header{box-shadow:none;border-bottom:1px solid var(--line)}
+.sidebar{border-right:1px solid var(--line)}
+@media(max-width:760px){h1{font-size:22px}.setup-step,.chart-card,.card-pad{padding:18px}}
+.field>.lab{display:flex;align-items:center;gap:4px;white-space:nowrap}
+.modal-footer p:empty{display:none}
+.modal-footer:has(p:empty){justify-content:flex-end}
+/* 모달: 화면 정가운데 (dialog 기본 중앙 정렬 복원) */
+dialog.modal{position:fixed;inset:0;margin:auto;width:min(720px,calc(100% - 48px));max-height:min(86dvh,900px)}
+dialog.modal.wide{width:min(1040px,calc(100% - 48px))}
+@media(max-width:760px){dialog.modal,dialog.modal.wide{width:calc(100% - 24px);max-height:calc(100dvh - 32px)}}

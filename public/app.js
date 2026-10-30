@@ -352,11 +352,11 @@ function peerView() {
 
 // ---------- modals ----------
 let lastFocus = null;
-function openModal(title, eyebrow, body, subtitle = '', wide = false, footerHtml = '') {
+function openModal(title, eyebrow, body, subtitle = '', wide = false, footerHtml = '', note = '') {
   const d = $('#modal');
   if (!d.open) lastFocus = document.activeElement;
   d.className = 'modal' + (wide ? ' wide' : '');
-  d.innerHTML = `<header class="modal-header"><div><div class="modal-eyebrow">${eyebrow}</div><h2 id="modal-title">${title}</h2>${subtitle ? `<p>${subtitle}</p>` : ''}</div><button class="icon-button" data-action="close-modal" aria-label="닫기">${icon('close')}</button></header><div class="modal-body">${body}</div><footer class="modal-footer"><p>${DISCLAIMER}</p>${footerHtml || '<button class="button small" data-action="close-modal">닫기</button>'}</footer>`;
+  d.innerHTML = `<header class="modal-header"><div><div class="modal-eyebrow">${eyebrow}</div><h2 id="modal-title">${title}</h2>${subtitle ? `<p>${subtitle}</p>` : ''}</div><button class="icon-button" data-action="close-modal" aria-label="닫기">${icon('close')}</button></header><div class="modal-body">${body}</div><footer class="modal-footer"><p>${note}</p>${footerHtml || '<button class="button small" data-action="close-modal">닫기</button>'}</footer>`;
   if (!d.open) d.showModal();
   d.scrollTop = 0;
 }
@@ -367,9 +367,11 @@ function closeModal() {
 }
 
 function newTeamModal() {
-  const memberRow = () => `<div class="member-row"><input class="input" name="m-name" placeholder="이름" maxlength="20"><input class="input" name="m-role" placeholder="역할 (예: 개발)" maxlength="30"><input class="input gh" name="m-github" placeholder="GitHub 아이디" maxlength="40"><input class="input gh" type="email" name="m-notion" placeholder="Notion 이메일" maxlength="100"><button type="button" class="icon-button" data-action="row-remove" aria-label="팀원 삭제">${icon('close', 'sm')}</button></div>`;
+  const memberRow = (n = '') => `<div class="member-row"><input class="input" name="m-name" placeholder="팀원 이름" maxlength="20" value="${esc(n)}"><button type="button" class="icon-button" data-action="row-remove" aria-label="팀원 삭제">${icon('close', 'sm')}</button></div>`;
   newTeamModal.row = memberRow;
-  openModal('새 팀 프로젝트', 'NEW TEAM / 교수 착수 설정', `<form id="team-form" class="form-grid"><label class="field">과목명<input class="input" name="course" required maxlength="60" placeholder="캡스톤디자인(2)"></label><label class="field">팀 이름<input class="input" name="name" required maxlength="30" placeholder="팀 3"></label><label class="field full">프로젝트명<input class="input" name="project" required maxlength="60" placeholder="캠퍼스 분실물 매칭 앱"></label><label class="field">시작일<input class="input" type="date" name="start_date"></label><label class="field">마감일<input class="input" type="date" name="deadline" required></label><label class="field full">GitHub 저장소 (선택)<input class="input" name="repo" placeholder="owner/repository" pattern="[\\w.\\-]+/[\\w.\\-]+"></label><label class="field full">Notion 팀 페이지 링크 (선택 · 하위 페이지 편집까지 수집)<input class="input" type="url" name="notion" placeholder="https://www.notion.so/..."></label><label class="field full">MRL 가중치 프리셋 (만든 뒤 착수 설정에서 조정 가능)<select class="select-control" name="preset">${PRESETS.map((p, i) => `<option value="${i}">${p.title} — 만들기 ${p.weights[0]} · 다듬기 ${p.weights[1]} · 이끌기 ${p.weights[2]}</option>`).join('')}</select></label><div class="full"><div class="field" style="margin-bottom:8px">팀원 (GitHub 아이디 · Notion 계정 이메일로 기록을 연결합니다)</div><div id="member-rows">${memberRow() + memberRow() + memberRow()}</div><button type="button" class="button small" data-action="row-add">팀원 추가</button></div></form>`, '만들면 팀원별 초대 링크가 생성됩니다.', true, `<div class="flex gap8"><button class="button small" data-action="close-modal">취소</button><button class="button primary small" data-action="create-team">팀 만들기</button></div>`);
+  openModal('새 팀 프로젝트', '', `<form id="team-form" class="form-grid"><label class="field full">프로젝트명<input class="input" name="project" required maxlength="60" placeholder="캠퍼스 분실물 매칭 앱" autofocus></label><label class="field">과목명<input class="input" name="course" required maxlength="60" placeholder="캡스톤디자인(2)"></label><label class="field">팀 이름<input class="input" name="name" required maxlength="30" placeholder="팀 3"></label><label class="field"><span class="lab">시작일 <span class="opt">선택</span></span><input class="input" type="date" name="start_date"></label><label class="field">마감일<input class="input" type="date" name="deadline" required></label><div class="full"><div class="field" style="margin-bottom:10px">팀원</div><div id="member-rows" class="stack-sm">${memberRow() + memberRow() + memberRow()}</div><button type="button" class="button small ghost mt16" data-action="row-add">${icon('user', 'sm')} 팀원 추가</button></div></form>`,
+    '협업 도구 연결과 MRL 가중치는 만든 뒤 착수 설정에서 정합니다.', false,
+    `<div class="flex gap8"><button class="button small" data-action="close-modal">취소</button><button class="button primary small" data-action="create-team">팀 만들기</button></div>`);
 }
 
 function allRecords() { return state.records || state.report?.records || []; }
@@ -404,12 +406,12 @@ function memberModal(id) {
   const self = `<div class="detail-section-title"><h3>본인 기술</h3>${tag('기여율 반영 없음', 'amber')}</div>${st ? `<p class="offline-story">${esc(st.text).replace(/\n/g, '<br>')}</p>${fileChips(st)}${draftNote(st)}` : '<p class="caption-note">작성하지 않았습니다.</p>'}`;
   const sum = list.length ? `<div class="mt24">${summaryCard(m, false)}</div>` : '';
   const peer = `<div class="unverified mt24"><div class="detail-section-title" style="margin-top:0"><h3>동료 증언 <span class="muted">${revs.length}</span></h3>${tag('검증되지 않은 참고 자료', 'amber')}</div>${revs.map(testimony).join('') || '<p class="caption-note">이 팀원에 대한 동료 증언이 없습니다.</p>'}</div>`;
-  openModal('개인 기여 상세', 'CONTRIBUTION EVIDENCE', `${hero}${sum}${s.score === 0 ? `<div class="notice-amber">연결된 도구에 ${esc(m.name)} 학생의 기록이 없습니다. <strong>온라인 기록 0% ≠ 전체 기여 0%</strong> — 본인 기술과 동료 증언, 교수님의 관찰로 확인해 주세요.</div>` : ''}${verified}${self}${peer}`, '위: 로그 기반 수치 · 아래: 수치에 반영되지 않는 서술과 증언', true);
+  openModal('개인 기여 상세', 'CONTRIBUTION EVIDENCE', `${hero}${sum}${s.score === 0 ? `<div class="notice-amber">연결된 도구에 ${esc(m.name)} 학생의 기록이 없습니다. <strong>온라인 기록 0% ≠ 전체 기여 0%</strong> — 본인 기술과 동료 증언, 교수님의 관찰로 확인해 주세요.</div>` : ''}${verified}${self}${peer}`, '위: 로그 기반 수치 · 아래: 수치에 반영되지 않는 서술과 증언', true, '', DISCLAIMER);
 }
 
 function methodModal() {
   const t = state.team;
-  openModal('기여율 산출 기준', 'METHOD / MRL 3축 계산', `<div class="explain-card"><h3>교수가 설정하고 잠근 가중치로 계산합니다.</h3><p>학생은 가중치를 확인하고 의견을 낼 수 있으며, 교수가 반영 여부를 정한 뒤 잠급니다. 마감 후 한 번만 계산하며 성적을 산출하지 않습니다.</p></div><h3 class="mt24" style="margin-bottom:14px">${esc(t.name)}의 가중치</h3>${weightBar()}<p class="caption-note">${t.locked_at ? lockLabel(t) : '아직 잠기지 않았습니다.'}</p><div class="formula-box mt24"><p class="formula-label">계산식</p><div class="formula-text">r(i,k) = 개인 i의 축 k 활동량 ÷ 팀 전체 축 k 활동량 (축마다 팀원 합 = 1.0)<br>기여율(i) = Σ_k [ r(i,k) × w(k) ] × 100% (팀 전체 합 = 100%)<br>성적 변환·상하한·반영강도 조정 없음</div></div><div class="table-wrap mt16"><table><thead><tr><th>축</th><th>정의</th></tr></thead><tbody>${AXES.map((a, i) => `<tr><td>${a}</td><td>${AXIS_DESC[i]}</td></tr>`).join('')}</tbody></table></div><div class="notice-amber mt24"><strong>해석 시 유의사항</strong><br>온라인 기록 0% ≠ 전체 기여 0%. 활동량만으로 작업의 질을 판단할 수 없습니다. 팀 전체에 활동이 하나도 없는 축은 계산할 상대비율이 없어, 그 축의 가중치를 나머지 축에 비례해 나눕니다(팀 합 100% 유지). 자기 기술과 동료평가는 기여율에 반영하지 않습니다.</div><div class="detail-section-title"><h3>프리셋</h3></div><ul class="bullet-copy">${PRESETS.map(p => `<li>${p.title}: 만들기 ${p.weights[0]} / 다듬기 ${p.weights[1]} / 이끌기 ${p.weights[2]}</li>`).join('')}</ul>`, 'MRL 3축 상대비율과 가중치가 기여율로 연결되는 방식입니다.', true);
+  openModal('기여율 산출 기준', 'METHOD / MRL 3축 계산', `<div class="explain-card"><h3>교수가 설정하고 잠근 가중치로 계산합니다.</h3><p>학생은 가중치를 확인하고 의견을 낼 수 있으며, 교수가 반영 여부를 정한 뒤 잠급니다. 마감 후 한 번만 계산하며 성적을 산출하지 않습니다.</p></div><h3 class="mt24" style="margin-bottom:14px">${esc(t.name)}의 가중치</h3>${weightBar()}<p class="caption-note">${t.locked_at ? lockLabel(t) : '아직 잠기지 않았습니다.'}</p><div class="formula-box mt24"><p class="formula-label">계산식</p><div class="formula-text">r(i,k) = 개인 i의 축 k 활동량 ÷ 팀 전체 축 k 활동량 (축마다 팀원 합 = 1.0)<br>기여율(i) = Σ_k [ r(i,k) × w(k) ] × 100% (팀 전체 합 = 100%)<br>성적 변환·상하한·반영강도 조정 없음</div></div><div class="table-wrap mt16"><table><thead><tr><th>축</th><th>정의</th></tr></thead><tbody>${AXES.map((a, i) => `<tr><td>${a}</td><td>${AXIS_DESC[i]}</td></tr>`).join('')}</tbody></table></div><div class="notice-amber mt24"><strong>해석 시 유의사항</strong><br>온라인 기록 0% ≠ 전체 기여 0%. 활동량만으로 작업의 질을 판단할 수 없습니다. 팀 전체에 활동이 하나도 없는 축은 계산할 상대비율이 없어, 그 축의 가중치를 나머지 축에 비례해 나눕니다(팀 합 100% 유지). 자기 기술과 동료평가는 기여율에 반영하지 않습니다.</div><div class="detail-section-title"><h3>프리셋</h3></div><ul class="bullet-copy">${PRESETS.map(p => `<li>${p.title}: 만들기 ${p.weights[0]} / 다듬기 ${p.weights[1]} / 이끌기 ${p.weights[2]}</li>`).join('')}</ul>`, 'MRL 3축 상대비율과 가중치가 기여율로 연결되는 방식입니다.', true, '', DISCLAIMER);
 }
 
 function addRecordModal() {
@@ -449,11 +451,10 @@ document.addEventListener('click', e => {
       const f = $('#team-form');
       if (!f.reportValidity()) return;
       const fd = new FormData(f);
-      const names = fd.getAll('m-name'), roles = fd.getAll('m-role'), ghs = fd.getAll('m-github'), notions = fd.getAll('m-notion');
+      const members = fd.getAll('m-name').map(n => ({ name: n })).filter(m => m.name.trim());
+      if (members.length < 2) return notify('팀원 이름을 2명 이상 입력해 주세요.');
       const r = await api('/teams', { method: 'POST', body: {
-        course: fd.get('course'), name: fd.get('name'), project: fd.get('project'), start_date: fd.get('start_date'), deadline: fd.get('deadline'),
-        repo: fd.get('repo').trim(), notion: fd.get('notion').trim(), weights: PRESETS[fd.get('preset')].weights,
-        members: names.map((n, i) => ({ name: n, role: roles[i], github: ghs[i], notion_email: notions[i] })).filter(m => m.name.trim()),
+        course: fd.get('course'), name: fd.get('name'), project: fd.get('project'), start_date: fd.get('start_date'), deadline: fd.get('deadline'), members,
       } }, null);
       keys[r.team.id] = { prof: r.prof_key }; saveKeys(); store.set(`hmk-as:${r.team.id}`, 'professor');
       location.hash = `#/team/${r.team.id}/setup`;

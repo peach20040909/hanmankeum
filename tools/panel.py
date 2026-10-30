@@ -28,14 +28,16 @@ def wrap(text, font, width):
 
 
 def logo_mark(img, x, y, size):
-    """앱 로고와 같은 마크: 라운드 사각형 + 높이가 다른 막대 3개"""
+    """앱 로고와 같은 마크: 기록 2줄 + 확인 배지"""
     ss = 4  # 안티에일리어싱용 확대 배율
     m = Image.new("RGBA", (size * ss, size * ss), (0, 0, 0, 0))
     md = ImageDraw.Draw(m)
     u = size * ss / 32  # 32 단위 좌표계
-    md.rounded_rectangle((0, 0, size * ss - 1, size * ss - 1), int(9 * u), fill=(61, 110, 240, 255))
-    for bx, by, alpha in ((7.5, 17, 150), (13.9, 12, 205), (20.3, 7, 255)):
-        md.rounded_rectangle((bx * u, by * u, (bx + 4.2) * u, 25 * u), int(2.1 * u), fill=(255, 255, 255, alpha))
+    md.rounded_rectangle((0, 0, size * ss - 1, size * ss - 1), int(9 * u), fill=(47, 99, 232, 255))
+    md.rounded_rectangle((7.4 * u, 8.6 * u, 24.6 * u, 11.6 * u), int(1.5 * u), fill=(255, 255, 255, 255))
+    md.rounded_rectangle((7.4 * u, 14.4 * u, 18.4 * u, 17.4 * u), int(1.5 * u), fill=(255, 255, 255, 153))
+    md.ellipse((15 * u, 15.4 * u, 28.2 * u, 28.6 * u), fill=(255, 255, 255, 255))
+    md.line([(18.9 * u, 22.1 * u), (20.8 * u, 24 * u), (24.7 * u, 19.8 * u)], fill=(47, 99, 232, 255), width=int(2.4 * u), joint="curve")
     mark = m.resize((size, size), Image.LANCZOS)
     img.paste(mark, (x, y), mark)
 
