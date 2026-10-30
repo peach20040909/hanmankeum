@@ -1,8 +1,8 @@
-// 로컬 개발·테스트용 서버. API는 app.js를 그대로 쓰고, 정적 파일만 여기서 서빙한다.
+// 로컬 개발·테스트용 서버. API는 handler.js를 그대로 쓰고, 정적 파일만 여기서 서빙한다.
 // (Vercel에서는 public/이 정적으로 서빙되고 /api/*는 api/index.js 함수가 받는다.)
 import http from 'node:http';
 import { readFile } from 'node:fs/promises';
-import { handle } from './app.js';
+import { handle } from './handler.js';
 
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8' };
 

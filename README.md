@@ -125,7 +125,7 @@ Notion API 조회는 블록마다 **마지막 편집자**만 알려주고 편집
 ## 구조
 
 ```
-app.js       API 핸들러 (Web 표준 Request/Response), 초대 키 권한
+handler.js   API 핸들러 (Web 표준 Request/Response), 초대 키 권한
 server.js    로컬 실행용 node:http 어댑터 + 정적 파일
 api/index.js Vercel 함수 진입점 (app.js의 handle을 그대로 사용)
 db.js        libSQL(Turso) 연결 · 스키마 · 컬럼 마이그레이션

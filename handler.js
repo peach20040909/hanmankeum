@@ -1,4 +1,5 @@
 // 로컬(server.js)과 Vercel(api/index.js)이 함께 쓰는 API 핸들러.
+// 파일 이름이 app.js면 Vercel이 Node 서버 진입점으로 오인한다.
 // 입출력은 Web 표준 Request/Response — 서명 검증을 위해 원본 바이트를 그대로 읽을 수 있다.
 import { randomUUID } from 'node:crypto';
 import { init, get, all, run, newKey } from './db.js';
