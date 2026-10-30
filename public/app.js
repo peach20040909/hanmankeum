@@ -66,9 +66,9 @@ const needsReview = r => (r.classified_by === 'ai' || r.classified_by === 'demo'
 const flagTags = r => `${needsReview(r) ? tag('확인 필요', 'amber') : ''}${r.ai_assisted ? tag('AI 도움', 'violet') : ''}`;
 // 서비스 안에서 AI가 하는 일 / 하지 않는 일
 function aiRoleCard() {
-  const yes = ['작업 기록을 만들기·다듬기·이끌기 중 하나로 분류', '분류마다 근거 한 문장을 남김'];
+  const yes = ['작업 기록을 만들기·다듬기·이끌기 중 하나로 분류', '분류마다 근거 한 문장을 남김', '마감 후 기여 요약·자기 기술 초안을 근거 기록과 함께 작성'];
   const no = ['점수·성적을 매기지 않음 (기여율은 정해진 식으로 계산)', '문서 본문·대화 내용을 읽지 않음', 'AI 사용을 감점하지 않음 (쓴 만큼 표시만)'];
-  return `<section class="card scope-card ai-role"><h2>이 서비스에서 AI는</h2>${yes.map(x => `<div class="scope-line">${icon('check')}<div><strong>${x}</strong></div></div>`).join('')}${no.map(x => `<div class="scope-line no">${icon('close')}<div><strong class="no">${x}</strong></div></div>`).join('')}<p class="caption-note">AI 분류와 규칙 판단이 다르면 '확인 필요'로 표시해 교수님이 원본을 보고 정합니다. AI를 쓸 수 없을 때는 규칙 분류로 동작합니다.</p></section>`;
+  return `<section class="card scope-card ai-role"><h2>이 서비스에서 AI는</h2>${yes.map(x => `<div class="scope-line">${icon('check')}<div><strong>${x}</strong></div></div>`).join('')}${no.map(x => `<div class="scope-line no">${icon('close')}<div><strong class="no">${x}</strong></div></div>`).join('')}<p class="caption-note">AI 분류와 규칙 판단이 다르면 '확인 필요'로 표시해 교수님이 원본을 보고 정합니다. AI가 쓴 문장은 서버가 근거 번호를 검증해, 근거가 없거나 평가 표현이 들어간 문장을 뺍니다. AI를 쓸 수 없을 때는 규칙으로 동작합니다.</p></section>`;
 }
 const lockLabel = t => `교수 설정 · 학생 의견 ${t.accepted_opinions}건 반영 · ${fmtDay(t.locked_at)} 잠금`;
 const inviteUrl = key => `${location.origin}/#/join/${key}`;
@@ -127,7 +127,7 @@ async function route() {
 async function loadViewData() {
   const t = state.team;
   if (state.view === 'report' && t.closed) state.report = await api(`/teams/${t.id}/report`);
-  if ((state.view === 'evidence' || state.view === 'peer') && (isProf() || t.closed)) state.records = await api(`/teams/${t.id}/records`);
+  if ((state.view === 'evidence' || state.view === 'peer' || state.view === 'statement') && (isProf() || t.closed)) state.records = await api(`/teams/${t.id}/records`);
 }
 
 async function refreshTeam(team) {
@@ -146,7 +146,7 @@ function renderChrome() {
   if (t) {
     const tabs = isProf()
       ? [['report', 'chart', '기여도 리포트'], ['evidence', 'folder', '활동 근거'], ['setup', 'lock', '착수 설정']]
-      : [['setup', 'lock', '착수 설정'], ['evidence', 'folder', '활동 기록'], ['statement', 'pencil', '자기 기술'], ['peer', 'message', '동료평가']];
+      : [['setup', 'lock', '착수 설정'], ['evidence', 'folder', '활동 기록'], ['statement', 'pencil', 'AI 요약 · 자기 기술'], ['peer', 'message', '동료평가']];
     for (const [v, ic, label] of tabs) nav.push([`#/team/${t.id}/${v}`, ic, label, state.view === v]);
   }
   const [statusText, dot] = !t ? [] : t.closed ? ['마감 · 산출 완료', '#358976'] : t.locked_at ? ['진행 중 · 기록 수집', '#4b7cf3'] : ['착수 설정 중', '#d39b3a'];
@@ -170,7 +170,7 @@ function projectStrip() {
   return `<div class="project-strip"><div class="flex gap12"><span class="project-icon">${icon('folder')}</span><div><div class="project-title">${esc(t.project)}</div><div class="project-meta"><span>${esc(t.course)}</span><span class="sep"></span><span>${esc(t.name)} · ${t.members.length}명</span>${t.repo ? `<span class="sep"></span><span>${esc(t.repo)}</span>` : ''}</div></div></div><div class="flex gap16"><span class="deadline">마감<strong>${esc(t.deadline)}</strong></span>${status}</div></div>`;
 }
 
-const TITLES = { home: ['내 팀 목록', '초대 링크로 들어온 팀이 이 브라우저에 표시됩니다.'], report: ['기여도 리포트', '연결된 도구의 기록과 교수가 잠근 가중치로 산출한 참고 자료입니다.'], evidence: ['활동 근거', '어떤 작업이 어느 축에 연결됐는지 확인하세요.'], setup: ['착수 설정', '도구 연결 → 교수가 MRL 가중치 설정 → 학생 확인·의견 → 교수 잠금'], statement: ['자기 기술', '온라인에 남지 않은 나의 기여를 마감 후 1회 남깁니다.'], peer: ['익명 동료평가', '기록에 남지 않은 기여를 팀원이 대신 증언합니다. 점수를 매기지 않습니다.'] };
+const TITLES = { home: ['내 팀 목록', '초대 링크로 들어온 팀이 이 브라우저에 표시됩니다.'], report: ['기여도 리포트', '연결된 도구의 기록과 교수가 잠근 가중치로 산출한 참고 자료입니다.'], evidence: ['활동 근거', '어떤 작업이 어느 축에 연결됐는지 확인하세요.'], setup: ['착수 설정', '도구 연결 → 교수가 MRL 가중치 설정 → 학생 확인·의견 → 교수 잠금'], statement: ['AI 요약 · 자기 기술', 'AI가 내 기록으로 쓴 문장을 확인하고, 나의 기여를 내 말로 남깁니다.'], peer: ['익명 동료평가', '기록에 남지 않은 기여를 팀원이 대신 증언합니다. 점수를 매기지 않습니다.'] };
 
 function render() {
   renderChrome();
@@ -222,7 +222,7 @@ function reportView() {
   const end = t.closed_at && t.closed_at < `${t.deadline} 23:59:59` ? fmtDay(t.closed_at) : t.deadline.replace(/-/g, '.');
   const statements = t.statements.map(st => {
     const m = memberBy(st.member_id);
-    return `<div class="offline-head mt16">${avatar(m)}<div><p class="student-name">${esc(m?.name)}</p><p class="student-role">${fmtFull(st.created_at)} 제출</p></div></div><p class="offline-story">${esc(st.text).replace(/\n/g, '<br>')}</p>${fileChips(st)}`;
+    return `<div class="offline-head mt16">${avatar(m)}<div><p class="student-name">${esc(m?.name)}</p><p class="student-role">${fmtFull(st.created_at)} 제출</p></div></div><p class="offline-story">${esc(st.text).replace(/\n/g, '<br>')}</p>${fileChips(st)}${draftNote(st)}`;
   }).join('');
   const testimonyTargets = t.members.filter(m => reviews.some(r => r.target_id === m.id && r.basis !== '관찰 못 함'));
   return `<div class="report-grid"><div class="stack"><div class="notice-strong">${icon('info')}<strong>${DISCLAIMER}</strong></div><section class="card card-pad"><h2>팀 요약</h2><dl class="record-metadata"><dt>분석 기간</dt><dd>${esc((t.start_date || '').replace(/-/g, '.'))} ~ ${end}</dd><dt>연동 도구</dt><dd>${esc(t.tools.join(' · '))}</dd><dt>적용 가중치</dt><dd>${AXES.map((a, i) => `${a} ${t.weights[i]}%`).join(' · ')}</dd><dt>기준</dt><dd>${lockLabel(t)}</dd></dl></section><section class="card chart-card"><div class="card-top"><div><h2>팀원별 기여율</h2><p class="card-desc">MRL 3축별 팀 내 상대비율 × 교수가 잠근 가중치 · 팀 합계 100%</p></div>${tag('로그 기반 · 검증된 수치', 'blue')}</div><div class="chart-legend"><span><i class="legend-dot"></i> 연결된 도구의 기록만 반영</span><span>팀원을 선택해 상세 보기 ${icon('chevron', 'sm')}</span></div><div>${rows}</div>${scores.some(s => s.score === 0) ? `<div class="reference-banner">${icon('info')}<span><strong>0%는 연결된 도구에 기록이 없다는 뜻입니다.</strong><br>오프라인 기여는 아래 자기 기술·동료 증언과 교수님의 관찰로 확인해 주세요.</span></div>` : ''}${t.unmatched ? `<div class="reference-banner">${icon('info')}<span>팀원 계정과 연결되지 않은 기록 <strong>${t.unmatched}건</strong>이 산출에서 빠져 있습니다. 활동 근거 탭에서 작성자를 지정할 수 있습니다.</span></div>` : ''}</section><section class="card weight-card"><div class="card-top"><div class="flex gap8"><h2>적용 가중치</h2>${icon('lock', 'sm')}</div><button class="button text small" data-action="method">산출 기준 보기 ${icon('chevron', 'sm')}</button></div>${weightBar()}<div class="weight-foot"><span class="flex gap8">${icon('check', 'sm')} ${lockLabel(t)}</span></div></section><section class="card unverified"><div class="card-top"><h2>동료 증언 <span class="offline-count">${reviews.filter(r => r.basis !== '관찰 못 함').length}</span></h2>${tag('검증되지 않은 참고 자료', 'amber')}</div><p class="card-desc">익명 동료평가 응답입니다. 응답자는 <strong>익명 A · B · C</strong>로만 표시되며, 기여율에 자동 반영하지 않고 로그와 중복 가산하지 않습니다. 응답 ${t.review_count}/${t.members.length}명.</p>${testimonyTargets.map(m => `<button class="testimony-row" data-action="member" data-id="${m.id}">${avatar(m)}<span><strong>${esc(m.name)}</strong> · 증언 ${reviews.filter(r => r.target_id === m.id && r.basis !== '관찰 못 함').length}건 · ${[...new Set(reviews.filter(r => r.target_id === m.id && r.basis !== '관찰 못 함').map(r => AXIS_SHORT[r.axis]))].join('·')}</span>${icon('chevron', 'sm')}</button>`).join('') || '<p class="caption-note">아직 제출된 동료 증언이 없습니다.</p>'}</section>${aiUseCard(scores)}<section class="card offline-card"><div class="card-top"><h2>자기 기술 <span class="offline-count">${t.statements.length}</span></h2>${tag('학생 본인 서술', 'amber')}</div>${statements || '<p class="card-desc">아직 제출된 자기 기술이 없습니다.</p>'}<p class="caption-note">자기 기술은 기여율에 자동 반영되지 않습니다.</p></section><section class="print-only print-table"><h2>팀원별 산출 근거</h2><table><thead><tr><th>팀원</th>${AXES.map(c => `<th>${c}</th>`).join('')}<th>기여율</th></tr></thead><tbody>${t.members.map(m => { const s = scores.find(x => x.member_id === m.id); return `<tr><td>${esc(m.name)}</td>${s.shares.map((v, i) => `<td>${s.counts[i]}건 · ${v.toFixed(1)}%</td>`).join('')}<td>${s.score}%</td></tr>`; }).join('')}</tbody></table><p class="print-note">기여율(i) = Σ_k [ r(i,k) × w(k) ], r(i,k) = 개인 i의 축 k 활동량 ÷ 팀 전체 축 k 활동량. ${DISCLAIMER}</p></section></div><aside class="stack aside-stack">${teamCard()}${aiRoleCard()}${axisCard()}${scopeCard()}</aside></div>`;
@@ -237,6 +237,7 @@ function aiUseCard() {
   return `<section class="card card-pad"><div class="card-top"><h2>AI 사용 · 분류 검증</h2>${tag('기여율 반영 없음', 'violet')}</div><p class="card-desc">팀원이 AI의 도움을 받은 기록을 따로 표시합니다. 감점이 아니라 사람이 한 부분과 AI가 도운 부분을 구분해 보기 위한 정보입니다.</p><div class="table-wrap mt16"><table><thead><tr><th>팀원</th><th>전체 기록</th><th>AI 도움 기록</th></tr></thead><tbody>${rows.map(([m, n, a]) => `<tr><td>${esc(m.name)}</td><td>${n}건</td><td>${a ? `<button class="table-link" data-action="member" data-id="${m.id}">${a}건</button>` : '0건'}</td></tr>`).join('')}</tbody></table></div>${review ? `<div class="reference-banner">${icon('info')}<span>AI 분류와 규칙 판단이 다른 기록 <strong>${review}건</strong>은 아직 확인 전입니다. 활동 근거 탭의 <strong>확인 필요</strong>에서 원본을 보고 정해 주세요.</span></div>` : `<p class="caption-note">AI 분류와 규칙 판단이 다른 기록은 모두 확인했습니다.</p>`}</section>`;
 }
 
+const draftNote = st => st.ai_draft ? `<details class="dropped mt16"><summary>${tag('AI 초안 사용', 'violet')} ${diffLine(st.draft_diff)} · 학생 대조 확인 ✓</summary><p class="offline-story" style="white-space:pre-wrap">${esc(st.ai_draft)}</p></details>` : '';
 const fileChips = st => st.files.length ? `<div class="flex gap8 mt16" style="flex-wrap:wrap">${st.files.map(f => `<a class="attachment-chip" href="/api/files/${f.id}?k=${encodeURIComponent(keyOf(state.team.id))}" target="_blank" rel="noopener noreferrer">${icon(f.mime.startsWith('image/') ? 'image' : 'paperclip')}${esc(f.name)}</a>`).join('')}</div>` : '';
 
 function recordItem(r) {
@@ -301,13 +302,40 @@ function setupView() {
   return `${quiet}<div class="setup-grid"><div class="stack">${stepInvite}${stepTools}${stepWeights}${stepConfirm}${stepLock}</div><aside class="stack aside-stack">${aside}</aside></div>`;
 }
 
+// 생성형 AI ①: 근거 인용 기여 요약. 문장마다 근거 기록 칩, 검증에서 빠진 문장도 이유와 함께 공개
+const refChips = refs => refs.map(id => { const r = allRecords().find(x => x.id === id); return r ? `<button class="ref-chip" data-action="record" data-id="${id}" title="${esc(r.title)}">${icon('link', 'sm')}${esc(r.ref || r.kind)}</button>` : ''; }).join('');
+const byTag = by => by === 'ai' ? tag('Claude 생성 · 근거 검증 통과분', 'violet') : tag('규칙 문장 · AI 미연결', 'gray');
+function verifyLine(g) {
+  const dropped = g.dropped || [];
+  return `<div class="verify-box"><div class="verify-head">${icon('shield', 'sm')}<span>AI가 쓴 문장 <strong>${g.generated}</strong>개 → 근거 확인 통과 <strong class="green">${g.sentences.length}</strong>개 · 제외 <strong class="${dropped.length ? 'sum-bad' : ''}">${dropped.length}</strong>개</span></div>${dropped.length ? `<details class="dropped"><summary>제외된 문장 보기</summary>${dropped.map(d => `<div class="dropped-item"><s>${esc(d.text)}</s><span>${esc(d.reason)}</span></div>`).join('')}</details>` : ''}${g.prompt_version ? `<p class="caption-note" style="margin:6px 0 0">프롬프트 ${esc(g.prompt_version)} · ${fmtFull(g.created_at)}</p>` : ''}</div>`;
+}
+function summaryCard(m, student) {
+  const t = state.team;
+  const s = t.summaries.find(x => x.member_id === m.id);
+  const head = `<div class="card-top"><div><h2>AI 근거 인용 요약</h2><p class="card-desc">${esc(m.name)}의 연결된 작업 기록만으로 쓴 3~5문장입니다. 모든 문장에 근거 기록이 붙고, 능력·태도 평가는 쓰지 않습니다.</p></div>${s ? byTag(s.by) : ''}</div>`;
+  if (!t.closed) return `<section class="card card-pad">${head}<p class="caption-note">마감 후 만들 수 있습니다.</p></section>`;
+  if (!s) return `<section class="card card-pad">${head}<button class="button primary small mt16" data-action="summary" data-id="${m.id}">${icon('pencil', 'sm')} 요약 만들기</button></section>`;
+  const lines = s.sentences.map((x, i) => `<li class="summary-line ${x.objection ? 'objected' : ''}"><p>${esc(x.text)}</p><div class="flex gap8" style="flex-wrap:wrap">${refChips(x.refs)}${x.weak ? tag('근거와 내용 연결 약함 · 원본 확인', 'amber') : ''}${x.note ? tag(esc(x.note), 'gray') : ''}${student ? `<button class="button text small" data-action="object" data-i="${i}">${x.objection ? '이의 수정' : '이 문장이 틀렸어요'}</button>` : ''}</div>${x.objection ? `<div class="objection">${icon('message', 'sm')}<span><strong>${student ? '내 이의' : '학생 이의'}</strong> · ${esc(x.objection)}</span></div>` : ''}</li>`).join('');
+  return `<section class="card card-pad">${head}<ol class="summary-list">${lines || '<p class="caption-note">근거 확인을 통과한 문장이 없습니다.</p>'}</ol>${verifyLine(s)}<div class="flex gap8 mt16">${s.sentences.some(x => x.objection) ? '' : `<button class="button small" data-action="summary" data-id="${m.id}">다시 만들기</button>`}${student ? '<span class="caption-note" style="margin:0">근거 칩을 눌러 원본과 대조해 보세요. 틀린 문장은 이의를 남기면 교수님 리포트에 함께 표시됩니다.</span>' : ''}</div></section>`;
+}
+const diffLine = d => d ? `AI 초안 대비 수정 <strong>${d.changed}%</strong> · 그대로 ${d.kept} · 고침 ${d.edited} · 새로 씀 ${d.added} · 지운 초안 문장 ${d.removed}` : '';
+
 function statementView() {
   const t = state.team;
   const mine = me();
   const sent = t.statements.find(s => s.member_id === mine.id);
   const locked = !t.closed;
   const disabled = locked || sent;
-  return `<div class="setup-grid"><div class="stack"><div class="setup-banner"><div class="lock-symbol">${icon(locked ? 'clock' : sent ? 'check' : 'pencil', 'lg')}</div><div><h2>${locked ? '마감 후 작성할 수 있어요' : sent ? '자기 기술이 제출되었습니다' : '기록에 남지 않은 나의 기여가 있나요?'}</h2><p>${locked ? `${esc(t.deadline)} 마감 후 열립니다.` : sent ? '교수님 리포트에 그대로 전달됩니다.' : '한 번 작성한 내용을 교수님이 참고합니다.'}</p></div></div><section class="card student-form"><div class="between"><h2>나의 자기 기술</h2>${tag(locked ? '마감 후 제출 가능' : sent ? '제출 완료' : '1회 제출', 'gray')}</div><p class="card-desc">${esc(mine.name)} · ${esc(t.name)} · ${esc(t.project)}</p><label for="statement-text">어떤 활동을 맡았나요?</label><textarea id="statement-text" class="textarea" maxlength="1000" ${disabled ? 'disabled' : ''} placeholder="예: 시연용 하드웨어 조립과 현장 세팅을 맡았고, 11/28과 12/5 오프라인 리허설을 진행했습니다.">${esc(sent ? sent.text : state.draftText)}</textarea><div class="form-status"><span id="char-count">${(sent ? sent.text : state.draftText).length}</span> / 1,000자</div><p class="caption-note">맡은 역할, 작업 날짜, 온라인 기록에 남지 않은 이유를 적어 주세요.</p><input type="file" id="file-input" accept="image/*,.pdf" multiple hidden>${sent ? fileChips(sent) : `<div class="file-list">${state.draftFiles.map(f => `<span class="attachment-chip">${icon('paperclip')}${esc(f.name)}</span>`).join('')}</div>`}<div class="form-foot"><button class="button" data-action="attach" ${disabled ? 'disabled' : ''}>${icon('paperclip', 'sm')} 사진·캡처 첨부</button><button class="button primary" data-action="submit-statement" ${disabled ? 'disabled' : ''}>${sent ? '제출 완료' : locked ? '마감 후 제출 가능' : '제출하기'}</button></div><div class="reference-banner">${icon('info')}<span>자기 기술은 기여율에 반영되지 않습니다. 작성한 그대로 교수님께 전달되며 최종 판단은 교수님께 있습니다.</span></div></section></div><aside class="stack aside-stack">${teamCard()}</aside></div>`;
+  const draft = t.draft;
+  if (draft && !sent && !state.draftText && !state.draftDismissed) state.draftText = draft.text;
+  const step = (n, title, body, done) => `<section class="card student-form"><div class="between"><h2><span class="count-circle">${n}</span>${title}</h2>${done || ''}</div>${body}</section>`;
+  const draftBox = sent ? (sent.ai_draft ? `<div class="reference-banner">${icon('info')}<span>AI 초안을 받아 직접 고쳐 제출했습니다. ${diffLine(sent.draft_diff)}</span></div>` : '')
+    : draft ? `<div class="draft-box"><div class="between"><strong>${icon('pencil', 'sm')} AI 초안이 입력란에 들어갔어요</strong>${byTag(draft.by)}</div><p class="caption-note" style="margin:6px 0 0">출발점일 뿐입니다. 문장마다 (근거: …)의 기록과 대조해 사실이 맞는지 확인하고, 기록에 없는 오프라인 활동은 직접 덧붙이세요. 근거 표시는 지워도 됩니다.</p>${verifyLine(draft)}</div>`
+    : `<div class="draft-box"><p class="card-desc" style="margin:0">빈 칸이 막막하면 내 작업 기록으로 AI 초안을 받아 고쳐 쓸 수 있어요. 받지 않고 직접 써도 됩니다.</p><button class="button soft small mt16" data-action="draft" ${locked ? 'disabled' : ''}>${icon('pencil', 'sm')} 내 기록으로 초안 받기</button></div>`;
+  const check = draft && !sent ? `<label class="check-line"><input type="checkbox" id="draft-check" ${state.draftChecked ? 'checked' : ''}> AI 초안의 문장을 내 기록·기억과 하나씩 대조해 확인했고, 틀린 부분은 고쳤습니다.</label>` : '';
+  const form = `${draftBox}<label for="statement-text" class="mt16" style="display:block">어떤 활동을 맡았나요?</label><textarea id="statement-text" class="textarea" maxlength="1000" ${disabled ? 'disabled' : ''} placeholder="예: 시연용 하드웨어 조립과 현장 세팅을 맡았고, 11/28과 12/5 오프라인 리허설을 진행했습니다." style="min-height:170px">${esc(sent ? sent.text : state.draftText)}</textarea><div class="form-status"><span id="char-count">${(sent ? sent.text : state.draftText).length}</span> / 1,000자</div><input type="file" id="file-input" accept="image/*,.pdf" multiple hidden>${sent ? fileChips(sent) : `<div class="file-list">${state.draftFiles.map(f => `<span class="attachment-chip">${icon('paperclip')}${esc(f.name)}</span>`).join('')}</div>`}${check}<div class="form-foot"><button class="button" data-action="attach" ${disabled ? 'disabled' : ''}>${icon('paperclip', 'sm')} 사진·캡처 첨부</button><button class="button primary" data-action="submit-statement" ${disabled ? 'disabled' : ''}>${sent ? '제출 완료' : locked ? '마감 후 제출 가능' : '제출하기'}</button></div><div class="reference-banner">${icon('info')}<span>자기 기술은 기여율에 반영되지 않습니다. 교수님은 제출본과 함께 AI 초안을 얼마나 고쳤는지도 봅니다.</span></div>`;
+  const banner = `<div class="setup-banner"><div class="lock-symbol">${icon(locked ? 'clock' : sent ? 'check' : 'pencil', 'lg')}</div><div><h2>${locked ? '마감 후 열립니다' : sent ? '자기 기술이 제출되었습니다' : 'AI가 쓴 문장, 그대로 믿지 말고 확인하세요'}</h2><p>${locked ? `${esc(t.deadline)} 마감 후 AI 요약과 자기 기술이 열립니다.` : sent ? '교수님 리포트에 AI 요약·내 이의·자기 기술이 함께 전달됩니다.' : '① AI 요약의 근거를 원본과 대조하고 틀린 문장에 이의를 남긴 뒤, ② 내 말로 자기 기술을 씁니다.'}</p></div></div>`;
+  return `<div class="setup-grid"><div class="stack">${banner}${summaryCard(mine, true).replace('<section class="card card-pad">', '<section class="card card-pad"><div class="step-label"><span class="count-circle">1</span>AI 요약 확인</div>')}${step(2, '나의 자기 기술', `<p class="card-desc">${esc(mine.name)} · ${esc(t.name)} · ${esc(t.project)}</p>${form}`, tag(locked ? '마감 후 제출 가능' : sent ? '제출 완료' : '1회 제출', 'gray'))}</div><aside class="stack aside-stack">${aiRoleCard()}${teamCard()}</aside></div>`;
 }
 
 // 작업 3: 익명 동료평가 (마감 후 1회)
@@ -373,9 +401,10 @@ function memberModal(id) {
   const revs = state.report.reviews.filter(r => r.target_id === id);
   const hero = `<div class="detail-hero"><div class="flex gap12">${avatar(m)}<div><div class="name">${esc(m.name)}</div><div class="role">${esc(m.role || '')} · 기록 ${list.length}건 · ${axisCaption(s.counts)}${list.some(r => r.ai_assisted) ? ` · AI 도움 ${list.filter(r => r.ai_assisted).length}건` : ''}</div></div></div><div><div class="big-score">${s.score.toFixed(1)}<small>%</small></div><div class="big-score-label">기여율 (로그 기반)</div></div></div>`;
   const verified = `<div class="formula-box"><div class="formula-label">기여율 = Σ [ 축별 팀 내 상대비율 × 가중치 ]</div><div class="formula-text">${s.shares.map((v, i) => `(${(v / 100).toFixed(2)} × ${s.applied[i].toFixed(0)}%)`).join(' + ')}<br>= ${s.parts.map(v => v.toFixed(1) + '%p').join(' + ')} = <strong>${s.score.toFixed(1)}%</strong></div></div><div class="table-wrap"><table><thead><tr><th>축</th><th>가중치</th><th>개인 활동량</th><th>팀 내 상대비율</th><th>반영</th><th>대표 근거</th></tr></thead><tbody>${AXES.map((c, i) => { const r = list.find(x => x.type === i); return `<tr><td>${c}</td><td>${t.weights[i]}%${s.applied[i].toFixed(1) !== t.weights[i].toFixed(1) ? ` <small class="muted">(적용 ${s.applied[i].toFixed(1)}%)</small>` : ''}</td><td>${s.counts[i]}건</td><td>${(s.shares[i] / 100).toFixed(2)}</td><td>${s.parts[i].toFixed(1)}%p</td><td>${r ? `<button class="table-link" data-action="record" data-id="${r.id}">기록 확인 ${icon('external', 'sm')}</button>` : '<span class="muted" style="font-size:10px">—</span>'}</td></tr>`; }).join('')}</tbody></table></div><div class="detail-section-title"><h3>전체 이력 <span class="muted">${list.length}</span></h3></div><div class="evidence-list">${list.map(recordItem).join('') || '<p class="caption-note">연결된 도구에 기록이 없습니다.</p>'}</div>`;
-  const self = `<div class="detail-section-title"><h3>본인 기술</h3>${tag('기여율 반영 없음', 'amber')}</div>${st ? `<p class="offline-story">${esc(st.text).replace(/\n/g, '<br>')}</p>${fileChips(st)}` : '<p class="caption-note">작성하지 않았습니다.</p>'}`;
+  const self = `<div class="detail-section-title"><h3>본인 기술</h3>${tag('기여율 반영 없음', 'amber')}</div>${st ? `<p class="offline-story">${esc(st.text).replace(/\n/g, '<br>')}</p>${fileChips(st)}${draftNote(st)}` : '<p class="caption-note">작성하지 않았습니다.</p>'}`;
+  const sum = list.length ? `<div class="mt24">${summaryCard(m, false)}</div>` : '';
   const peer = `<div class="unverified mt24"><div class="detail-section-title" style="margin-top:0"><h3>동료 증언 <span class="muted">${revs.length}</span></h3>${tag('검증되지 않은 참고 자료', 'amber')}</div>${revs.map(testimony).join('') || '<p class="caption-note">이 팀원에 대한 동료 증언이 없습니다.</p>'}</div>`;
-  openModal('개인 기여 상세', 'CONTRIBUTION EVIDENCE', `${hero}${s.score === 0 ? `<div class="notice-amber">연결된 도구에 ${esc(m.name)} 학생의 기록이 없습니다. <strong>온라인 기록 0% ≠ 전체 기여 0%</strong> — 본인 기술과 동료 증언, 교수님의 관찰로 확인해 주세요.</div>` : ''}${verified}${self}${peer}`, '위: 로그 기반 수치 · 아래: 수치에 반영되지 않는 서술과 증언', true);
+  openModal('개인 기여 상세', 'CONTRIBUTION EVIDENCE', `${hero}${sum}${s.score === 0 ? `<div class="notice-amber">연결된 도구에 ${esc(m.name)} 학생의 기록이 없습니다. <strong>온라인 기록 0% ≠ 전체 기여 0%</strong> — 본인 기술과 동료 증언, 교수님의 관찰로 확인해 주세요.</div>` : ''}${verified}${self}${peer}`, '위: 로그 기반 수치 · 아래: 수치에 반영되지 않는 서술과 증언', true);
 }
 
 function methodModal() {
@@ -496,15 +525,38 @@ document.addEventListener('click', e => {
       await api(`/teams/${t.id}/records/${id}`, { method: 'PATCH', body: { type: Number($('#record-type').value), member_id: mv ? Number(mv) : null } });
       closeModal(); await refreshTeam(); notify('교수 확인으로 저장했습니다.');
     }); break;
+    case 'summary': run(async () => {
+      notify('근거 기록으로 요약을 만들고 검증하는 중입니다…');
+      state.team = await api(`/teams/${t.id}/members/${id}/summary`, { method: 'POST' });
+      if ($('#modal').open && state.report) memberModal(id); else render();
+      const s = state.team.summaries.find(x => x.member_id === id);
+      notify(`요약 ${s.sentences.length}문장 · 근거 확인에서 제외 ${s.dropped.length}문장`);
+    }); break;
+    case 'object': {
+      const x = t.summaries.find(s => s.member_id === t.me_id).sentences[b.dataset.i];
+      openModal('이 문장이 왜 틀렸나요?', 'OBJECTION / 이의 표시', `<p class="offline-story">${esc(x.text)}</p><label class="field mt16" for="objection-text">이유 (교수님 리포트에 함께 표시됩니다 · 비우고 저장하면 이의 취소)</label><textarea id="objection-text" class="textarea" maxlength="300" style="min-height:80px" placeholder="예: 혼자 한 일이 아니라 이다은과 함께 작성한 문서입니다.">${esc(x.objection || '')}</textarea>`, 'AI 요약은 기록만 보고 썼기 때문에 맥락이 틀릴 수 있습니다.', false, `<div class="flex gap8"><button class="button small" data-action="close-modal">취소</button><button class="button primary small" data-action="save-objection" data-i="${b.dataset.i}">저장</button></div>`);
+      break;
+    }
+    case 'save-objection': run(async () => {
+      const team = await api(`/teams/${t.id}/summary/objection`, { method: 'POST', body: { index: Number(b.dataset.i), text: $('#objection-text').value } });
+      closeModal(); await refreshTeam(team); notify('이의를 저장했습니다.');
+    }); break;
+    case 'draft': run(async () => {
+      notify('내 기록으로 초안을 쓰고 근거를 검증하는 중입니다…');
+      const team = await api(`/teams/${t.id}/draft`, { method: 'POST' });
+      state.draftText = ''; state.draftChecked = false;
+      await refreshTeam(team); notify('AI 초안을 넣었습니다. 기록과 대조해 고쳐 주세요.');
+    }); break;
     case 'attach': $('#file-input').click(); break;
     case 'submit-statement':
       if (!state.draftText.trim()) { notify('맡은 활동을 먼저 작성해 주세요.'); $('#statement-text').focus(); break; }
+      if (t.draft && !state.draftChecked) { notify('AI 초안을 내 기록과 대조해 확인했다고 체크해 주세요.'); break; }
       openModal('이 내용으로 제출할까요?', 'SUBMISSION / 1회 제출 확인', `<p class="offline-story" style="white-space:pre-wrap">${esc(state.draftText)}</p><p class="caption-note">첨부 파일 ${state.draftFiles.length}개</p><div class="notice-amber mt24">제출 후에는 수정할 수 없습니다.</div>`, '작성한 내용은 기여율에 반영되지 않습니다.', false, '<div class="flex gap8"><button class="button small" data-action="close-modal">계속 작성</button><button class="button primary small" data-action="confirm-submit">제출하기</button></div>');
       break;
     case 'confirm-submit': run(async () => {
       const files = await Promise.all(state.draftFiles.map(async f => ({ name: f.name, mime: f.type, data: await readFileB64(f) })));
-      const team = await api(`/teams/${t.id}/statements`, { method: 'POST', body: { text: state.draftText, files } });
-      state.draftText = ''; state.draftFiles = [];
+      const team = await api(`/teams/${t.id}/statements`, { method: 'POST', body: { text: state.draftText, files, checked: !!state.draftChecked } });
+      state.draftText = ''; state.draftFiles = []; state.draftChecked = false;
       closeModal(); await refreshTeam(team); notify('자기 기술을 제출했습니다.');
     }); break;
     case 'peer-submit': {
@@ -525,6 +577,7 @@ document.addEventListener('click', e => {
 document.addEventListener('change', e => {
   const el = e.target;
   if (el.id === 'member-filter') { state.member = el.value; render(); }
+  if (el.id === 'draft-check') state.draftChecked = el.checked;
   if (el.id === 'file-input') {
     const files = [...el.files].slice(0, 5);
     if (files.some(f => f.size > 5 * 1024 * 1024)) return notify('파일은 5MB 이하여야 합니다.');
@@ -534,7 +587,7 @@ document.addEventListener('change', e => {
 
 document.addEventListener('input', e => {
   const el = e.target;
-  if (el.id === 'statement-text') { state.draftText = el.value; $('#char-count').textContent = el.value.length; }
+  if (el.id === 'statement-text') { state.draftText = el.value; state.draftDismissed = !el.value; $('#char-count').textContent = el.value.length; }
   if (el.dataset.w !== undefined && state.draftWeights) {
     state.draftWeights[el.dataset.w] = Number(el.value);
     const sum = state.draftWeights.reduce((a, b) => a + (Number(b) || 0), 0);

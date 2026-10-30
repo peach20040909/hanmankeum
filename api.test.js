@@ -97,4 +97,29 @@ test('AI 리터러시: 확인 필요 · AI 도움 표시', async t => {
   // 학생 화면에는 확인 필요 개수를 내보내지 않음
   const sk = (await c2(`/teams/${id}`, P)).data.members[0].key;
   assert.ok(!('needs_review' in (await c2(`/teams/${id}`, sk)).data));
+
+  // 생성형 AI: 요약·초안 (키 없음 → 규칙 문장, 그래도 근거 검증 통과분만)
+  const members = (await c2(`/teams/${id}`, P)).data.members;
+  const seo = members.find(m => m.name === '김서연'), min = members.find(m => m.name === '최민재');
+  assert.equal((await c2(`/teams/${id}/members/${seo.id}/summary`, sk, 'POST')).status, members[0].id === seo.id ? 200 : 403); // 남의 요약은 못 만듦
+  const sum = (await c2(`/teams/${id}/members/${seo.id}/summary`, P, 'POST')).data.summaries.find(s => s.member_id === seo.id);
+  assert.equal(sum.by, 'rule');
+  const seoRecs = recs.filter(r => r.member_id === seo.id).map(r => r.id);
+  assert.ok(sum.sentences.length && sum.sentences.every(s => s.refs.length && s.refs.every(x => seoRecs.includes(x))));
+  assert.equal((await c2(`/teams/${id}/members/${min.id}/summary`, P, 'POST')).status, 409); // 기록 0건은 요약 안 함
+
+  const ks = seo.key;
+  await c2(`/teams/${id}/members/${seo.id}/summary`, ks, 'POST');
+  const ob = (await c2(`/teams/${id}/summary/objection`, ks, 'POST', { index: 0, text: '공동 작업이었습니다' })).data;
+  assert.equal(ob.summaries[0].sentences[0].objection, '공동 작업이었습니다');
+  assert.equal(ob.summaries.length, 1); // 학생은 본인 요약만 봄
+  assert.equal((await c2(`/teams/${id}/members/${seo.id}/summary`, P, 'POST')).status, 409); // 이의가 있으면 다시 만들기로 지우지 못함
+
+  const dr = (await c2(`/teams/${id}/draft`, ks, 'POST')).data.draft;
+  assert.match(dr.text, /\(근거: /);
+  assert.equal((await c2(`/teams/${id}/statements`, ks, 'POST', { text: dr.text })).status, 400); // 대조 확인 체크 필요
+  const st = (await c2(`/teams/${id}/statements`, ks, 'POST', { text: `${dr.text}\n발표 리허설도 맡았습니다.`, checked: true })).data.statements[0];
+  assert.equal(st.draft_checked, 1);
+  assert.equal(st.draft_diff.added, 1);
+  assert.equal((await c2(`/teams/${id}/draft`, ks, 'POST')).status, 409); // 제출 후 초안 재생성 불가
 });
