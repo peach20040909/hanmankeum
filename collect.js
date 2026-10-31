@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { all, run } from './db.js';
 
 // 점수에 들어가는 3축 (예선 5유형 · 4축 폐기)
 export const AXES = ['만들기', '다듬기', '이끌기'];
@@ -160,3 +161,25 @@ export async function classify(items) {
 
 // AI 분류가 규칙 판단과 다르고, 교수가 아직 확인하지 않은 기록
 export const needsReview = r => (r.classified_by === 'ai' || r.classified_by === 'demo') && r.rule_type != null && r.rule_type !== r.type;
+
+
+// GitHub 저장소의 기록을 수집해 저장한다. 수집 화면과 시연 시드가 함께 쓴다.
+export async function ingestGitHub(teamId, repo, members) {
+  const byLogin = new Map(members.filter(m => m.github).map(m => [m.github.toLowerCase(), m.id]));
+  const known = new Set((await all('SELECT ext_id FROM records WHERE team_id = ?', teamId)).map(r => r.ext_id));
+  const items = (await fetchGitHub(repo)).filter(it => !known.has(it.ext_id));
+  let ai = 0;
+  for (let i = 0; i < items.length; i += 80) {
+    const chunk = items.slice(i, i + 80);
+    const cls = await classify(chunk);
+    for (const [j, it] of chunk.entries()) {
+      if (cls[j].by === 'ai') ai++;
+      const d = detectAI(it);
+      await run('INSERT OR IGNORE INTO records (team_id, member_id, login, ext_id, tool, kind, title, body, url, ref, date, type, reason, classified_by, rule_type, prompt_version, ai_assisted, ai_note) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+        teamId, byLogin.get((it.login || '').toLowerCase()) ?? null, it.login || null, it.ext_id, it.tool, it.kind, it.title.slice(0, 300),
+        (it.body || '').slice(0, 4000), it.url, it.ref, it.date, cls[j].type, cls[j].reason, cls[j].by, cls[j].rule_type ?? null, cls[j].prompt_version ?? null,
+        d.ai ? 1 : 0, d.note);
+    }
+  }
+  return { added: items.length, ai };
+}

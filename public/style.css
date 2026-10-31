@@ -245,3 +245,9 @@ dialog.modal.wide{width:min(1040px,calc(100% - 48px))}
 .dossier-foot{margin-top:14px;border-top:1px solid #ebedf3;padding-top:7px}
 .dossier-empty{font-size:11px;color:#6b7385;padding:7px 0}
 }
+/* 인쇄: 눌러야 보이는 안내는 종이에서 의미가 없다 */
+@media print{
+.aux-screen{display:none}
+.testimony-row .icon,.aux-arrow,.chart-legend span:last-child,.detail-section-title .button{display:none}
+.aux-card>summary{border-bottom:1px solid var(--line)}
+}

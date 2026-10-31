@@ -4,7 +4,7 @@
 import { randomUUID } from 'node:crypto';
 import { init, get, all, run, newKey } from './db.js';
 import { computeScores } from './score.js';
-import { fetchGitHub, classify, detectAI, needsReview, AXES } from './collect.js';
+import { ingestGitHub, classify, detectAI, needsReview, AXES } from './collect.js';
 import { seedDemo } from './seed.js';
 import { summarize, draftStatement, draftText, compareDraft } from './generate.js';
 import { verifySignature, parsePageId, ancestors, pageInfo, userInfo, checkAccess, KIND } from './notion.js';
@@ -199,26 +199,11 @@ const routes = [
     if (!a.t.locked_at) fail(409, '착수 기준을 잠근 뒤 수집할 수 있습니다.');
     if (!a.t.repo) fail(400, '연결된 GitHub 저장소가 없습니다.');
     const ms = await all('SELECT * FROM members WHERE team_id = ?', id);
-    const byLogin = new Map(ms.filter(m => m.github).map(m => [m.github.toLowerCase(), m.id]));
-    const known = new Set((await all('SELECT ext_id FROM records WHERE team_id = ?', id)).map(r => r.ext_id));
-    let items;
-    try { items = (await fetchGitHub(a.t.repo)).filter(it => !known.has(it.ext_id)); } catch (e) { fail(502, e.message); }
-    let ai = 0;
-    for (let i = 0; i < items.length; i += 80) {
-      const chunk = items.slice(i, i + 80);
-      const cls = await classify(chunk);
-      for (const [j, it] of chunk.entries()) {
-        if (cls[j].by === 'ai') ai++;
-        const d = detectAI(it);
-        await run('INSERT OR IGNORE INTO records (team_id, member_id, login, ext_id, tool, kind, title, body, url, ref, date, type, reason, classified_by, rule_type, prompt_version, ai_assisted, ai_note) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
-          id, byLogin.get((it.login || '').toLowerCase()) ?? null, it.login || null, it.ext_id, it.tool, it.kind, it.title.slice(0, 300),
-          (it.body || '').slice(0, 4000), it.url, it.ref, it.date, cls[j].type, cls[j].reason, cls[j].by, cls[j].rule_type ?? null, cls[j].prompt_version ?? null,
-          d.ai ? 1 : 0, d.note);
-      }
-    }
+    let added, ai;
+    try { ({ added, ai } = await ingestGitHub(id, a.t.repo, ms)); } catch (e) { fail(502, e.message); }
     await run("UPDATE teams SET collected_at = datetime('now') WHERE id = ?", id);
     const t2 = await teamView(id, a);
-    return { added: items.length, ai, review: t2.needs_review, team: t2 };
+    return { added, ai, review: t2.needs_review, team: t2 };
   }],
 
   // API 연동 전 도구(Google Docs 등)의 작업을 링크로 기록. 학생은 본인 것만.
