@@ -215,6 +215,43 @@ function collectCard() {
 
 const axisCaption = counts => counts.map((n, i) => `${AXIS_SHORT[i]} ${n}`).join(' · ');
 
+
+// 인쇄 전용: 교수가 성적을 매기고 학생에게 설명할 수 있도록 학생별 1쪽 상세를 붙인다.
+// 화면에서는 팀원을 눌러 모달로 보지만, PDF에는 눌러볼 수 없으므로 전부 펼쳐 둔다.
+function printDossier() {
+  const t = state.team;
+  const { scores, reviews, records } = state.report;
+  const flagged = records.filter(needsReview);
+  const pages = t.members.map(m => {
+    const s = scores.find(x => x.member_id === m.id);
+    const mine = records.filter(r => r.member_id === m.id);
+    const st = t.statements.find(x => x.member_id === m.id);
+    const revs = reviews.filter(r => r.target_id === m.id && r.basis !== '관찰 못 함');
+    const calc = AXES.map((a, i) => `${a} ${s.counts[i]}건 · 팀 내 ${s.shares[i].toFixed(1)}% × 가중치 ${t.weights[i]}%`).join('<br>');
+    const rows = mine.map(r => `<tr><td>${fmtDate(r.date)}</td><td>${esc(r.tool)} · ${esc(r.kind)}</td><td>${esc(r.title)}${r.ai_assisted ? ' <strong>[AI 도움 표시]</strong>' : ''}</td><td>${esc(AXES[r.type] ?? '미분류')}</td><td class="src">${r.url ? esc(r.url) : '원본 링크 없음'}</td></tr>`).join('');
+    return `<section class="dossier">
+      <div class="dossier-head"><div><h2>${esc(m.name)}</h2><p>${esc(m.role || '')}${m.github ? ` · @${esc(m.github)}` : ''}</p></div><div class="dossier-score">${s.score}<span>%</span></div></div>
+      <h3>산출 근거</h3><p class="dossier-calc">${calc}<br><strong>합계 ${s.score}%</strong></p>
+      <h3>연결된 작업 기록 <span class="muted">${mine.length}건</span></h3>
+      ${rows ? `<table class="dossier-table"><thead><tr><th>날짜</th><th>도구</th><th>내용</th><th>축</th><th>원본</th></tr></thead><tbody>${rows}</tbody></table>`
+        : '<p class="dossier-empty">연결된 도구에 기록이 없습니다. 아래 자기 기술과 동료 증언, 교수님의 관찰로 확인해 주세요.</p>'}
+      <h3>자기 기술</h3>
+      ${st ? `<p class="dossier-text">${esc(st.text).split('\n').join('<br>')}</p><p class="dossier-meta">${fmtFull(st.created_at)} 제출${st.ai_draft ? ` · AI 초안 사용 · ${diffLine(st.draft_diff)}` : ''}</p>`
+        : '<p class="dossier-empty">제출하지 않았습니다.</p>'}
+      <h3>받은 동료 증언 <span class="muted">${revs.length}건</span></h3>
+      ${revs.map(r => `<p class="dossier-text"><strong>${esc(AXES[r.axis])}</strong> · ${esc(r.reviewer)} · 근거: ${esc(r.basis)}<br>${esc(r.did || '내용 없음')}</p>`).join('')
+        || '<p class="dossier-empty">받은 증언이 없습니다.</p>'}
+      <p class="dossier-foot">동료 증언과 자기 기술은 검증되지 않은 참고 자료이며 기여율에 반영되지 않았습니다.</p>
+    </section>`;
+  }).join('');
+  const review = flagged.length ? `<section class="dossier"><h2>교수님이 확인할 기록 <span class="muted">${flagged.length}건</span></h2>
+    <p class="dossier-calc">AI 분류와 규칙 판단이 엇갈린 기록입니다. 원본을 보고 축을 정하면 기여율이 그만큼 정정됩니다.</p>
+    <table class="dossier-table"><thead><tr><th>날짜</th><th>작성자</th><th>내용</th><th>AI 분류</th><th>규칙 판단</th><th>원본</th></tr></thead><tbody>
+    ${flagged.map(r => { const m = memberBy(r.member_id); return `<tr><td>${fmtDate(r.date)}</td><td>${m ? esc(m.name) : '미매칭'}</td><td>${esc(r.title)}</td><td>${esc(AXES[r.type] ?? '-')}</td><td>${esc(AXES[r.rule_type] ?? '-')}</td><td class="src">${r.url ? esc(r.url) : '원본 링크 없음'}</td></tr>`; }).join('')}
+    </tbody></table></section>` : '';
+  return pages + review;
+}
+
 // 작업 4: 리포트
 function reportView() {
   const t = state.team;
@@ -232,7 +269,7 @@ function reportView() {
     return `<div class="offline-head mt16">${avatar(m)}<div><p class="student-name">${esc(m?.name)}</p><p class="student-role">${fmtFull(st.created_at)} 제출</p></div></div><p class="offline-story">${esc(st.text).replace(/\n/g, '<br>')}</p>${fileChips(st)}${draftNote(st)}`;
   }).join('');
   const testimonyTargets = t.members.filter(m => reviews.some(r => r.target_id === m.id && r.basis !== '관찰 못 함'));
-  return `<div class="report-grid"><div class="stack">${aiWorkCard()}<section class="card chart-card"><div class="card-top"><div><h2>팀원별 기여율</h2><p class="card-desc">${esc((t.start_date || '').replace(/-/g, '.'))} ~ ${end} · ${esc(t.tools.join(' · '))} · MRL 3축별 팀 내 상대비율 × 잠근 가중치</p></div></div><div class="chart-legend"><span><i class="legend-dot"></i> 연결된 도구의 기록만 반영</span><span>팀원을 선택해 상세 보기 ${icon('chevron', 'sm')}</span></div><div>${rows}</div>${scores.some(s => s.score === 0) ? `<div class="reference-banner">${icon('info')}<span><strong>0%는 연결된 도구에 기록이 없다는 뜻입니다.</strong><br>오프라인 기여는 참고 자료의 자기 기술·동료 증언과 교수님의 관찰로 확인해 주세요.</span></div>` : ''}${t.unmatched ? `<div class="reference-banner">${icon('info')}<span>팀원 계정과 연결되지 않은 기록 <strong>${t.unmatched}건</strong>이 산출에서 빠져 있습니다. 활동 근거 탭에서 작성자를 지정할 수 있습니다.</span></div>` : ''}<div class="weight-inline"><div class="between"><span class="flex gap8 weight-label">${icon('lock', 'sm')} 적용 가중치 · ${lockLabel(t)}</span><button class="button text small" data-action="method">산출 기준 보기 ${icon('chevron', 'sm')}</button></div>${weightBar()}</div></section><details class="card aux-card"><summary><h2>참고 자료</h2>${tag('기여율에 반영되지 않음', 'gray')}<span class="aux-arrow">${icon('down', 'sm')}</span></summary><div class="aux-body"><h3>동료 증언 <span class="offline-count">${reviews.filter(r => r.basis !== '관찰 못 함').length}</span></h3><p class="card-desc">익명 동료평가 응답입니다. 응답자는 <strong>익명 A · B · C</strong>로만 표시되며, 로그와 중복 가산하지 않습니다. 응답 ${t.review_count}/${t.members.length}명.</p>${testimonyTargets.map(m => `<button class="testimony-row" data-action="member" data-id="${m.id}">${avatar(m)}<span><strong>${esc(m.name)}</strong> · 증언 ${reviews.filter(r => r.target_id === m.id && r.basis !== '관찰 못 함').length}건 · ${[...new Set(reviews.filter(r => r.target_id === m.id && r.basis !== '관찰 못 함').map(r => AXIS_SHORT[r.axis]))].join('·')}</span>${icon('chevron', 'sm')}</button>`).join('') || '<p class="caption-note">아직 제출된 동료 증언이 없습니다.</p>'}<h3 class="mt24">자기 기술 <span class="offline-count">${t.statements.length}</span></h3>${statements || '<p class="card-desc">아직 제출된 자기 기술이 없습니다.</p>'}<div class="mt24">${aiUseTable()}</div></div></details><section class="print-only print-table"><h2>팀원별 산출 근거</h2><table><thead><tr><th>팀원</th>${AXES.map(c => `<th>${c}</th>`).join('')}<th>기여율</th></tr></thead><tbody>${t.members.map(m => { const s = scores.find(x => x.member_id === m.id); return `<tr><td>${esc(m.name)}</td>${s.shares.map((v, i) => `<td>${s.counts[i]}건 · ${v.toFixed(1)}%</td>`).join('')}<td>${s.score}%</td></tr>`; }).join('')}</tbody></table><p class="print-note">기여율(i) = Σ_k [ r(i,k) × w(k) ], r(i,k) = 개인 i의 축 k 활동량 ÷ 팀 전체 축 k 활동량. ${DISCLAIMER}</p></section></div><aside class="stack aside-stack">${teamCard()}${axisCard()}</aside></div>`;
+  return `<div class="report-grid"><div class="stack">${aiWorkCard()}<section class="card chart-card"><div class="card-top"><div><h2>팀원별 기여율</h2><p class="card-desc">${esc((t.start_date || '').replace(/-/g, '.'))} ~ ${end} · ${esc(t.tools.join(' · '))} · MRL 3축별 팀 내 상대비율 × 잠근 가중치</p></div></div><div class="chart-legend"><span><i class="legend-dot"></i> 연결된 도구의 기록만 반영</span><span>팀원을 선택해 상세 보기 ${icon('chevron', 'sm')}</span></div><div>${rows}</div>${scores.some(s => s.score === 0) ? `<div class="reference-banner">${icon('info')}<span><strong>0%는 연결된 도구에 기록이 없다는 뜻입니다.</strong><br>오프라인 기여는 참고 자료의 자기 기술·동료 증언과 교수님의 관찰로 확인해 주세요.</span></div>` : ''}${t.unmatched ? `<div class="reference-banner">${icon('info')}<span>팀원 계정과 연결되지 않은 기록 <strong>${t.unmatched}건</strong>이 산출에서 빠져 있습니다. 활동 근거 탭에서 작성자를 지정할 수 있습니다.</span></div>` : ''}<div class="weight-inline"><div class="between"><span class="flex gap8 weight-label">${icon('lock', 'sm')} 적용 가중치 · ${lockLabel(t)}</span><button class="button text small" data-action="method">산출 기준 보기 ${icon('chevron', 'sm')}</button></div>${weightBar()}</div></section><details class="card aux-card"><summary><h2>참고 자료</h2>${tag('기여율에 반영되지 않음', 'gray')}<span class="aux-arrow">${icon('down', 'sm')}</span></summary><div class="aux-body"><h3>동료 증언 <span class="offline-count">${reviews.filter(r => r.basis !== '관찰 못 함').length}</span></h3><p class="card-desc">익명 동료평가 응답입니다. 응답자는 <strong>익명 A · B · C</strong>로만 표시되며, 로그와 중복 가산하지 않습니다. 응답 ${t.review_count}/${t.members.length}명.</p>${testimonyTargets.map(m => `<button class="testimony-row" data-action="member" data-id="${m.id}">${avatar(m)}<span><strong>${esc(m.name)}</strong> · 증언 ${reviews.filter(r => r.target_id === m.id && r.basis !== '관찰 못 함').length}건 · ${[...new Set(reviews.filter(r => r.target_id === m.id && r.basis !== '관찰 못 함').map(r => AXIS_SHORT[r.axis]))].join('·')}</span>${icon('chevron', 'sm')}</button>`).join('') || '<p class="caption-note">아직 제출된 동료 증언이 없습니다.</p>'}<h3 class="mt24">자기 기술 <span class="offline-count">${t.statements.length}</span></h3>${statements || '<p class="card-desc">아직 제출된 자기 기술이 없습니다.</p>'}<div class="mt24">${aiUseTable()}</div></div></details><section class="print-only">${printDossier()}</section><section class="print-only print-table"><h2>팀원별 산출 근거</h2><table><thead><tr><th>팀원</th>${AXES.map(c => `<th>${c}</th>`).join('')}<th>기여율</th></tr></thead><tbody>${t.members.map(m => { const s = scores.find(x => x.member_id === m.id); return `<tr><td>${esc(m.name)}</td>${s.shares.map((v, i) => `<td>${s.counts[i]}건 · ${v.toFixed(1)}%</td>`).join('')}<td>${s.score}%</td></tr>`; }).join('')}</tbody></table><p class="print-note">기여율(i) = Σ_k [ r(i,k) × w(k) ], r(i,k) = 개인 i의 축 k 활동량 ÷ 팀 전체 축 k 활동량. ${DISCLAIMER}</p></section></div><aside class="stack aside-stack">${teamCard()}${axisCard()}</aside></div>`;
 }
 
 // AI가 이 리포트에서 실제로 한 일. 교수가 확인해야 할 지점을 먼저 보여준다
