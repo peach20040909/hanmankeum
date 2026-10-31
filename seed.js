@@ -4,7 +4,7 @@ import { ruleClassify, detectAI, PROMPT_VERSION } from './collect.js';
 
 // 본선 시연용 예시 팀 (MRL 3축: 0 만들기 · 1 다듬기 · 2 이끌기)
 const MEMBERS = [
-  ['박준호', '팀장 · 개발', 'junho-park', 'junho@mju.ac.kr'],
+  ['박준호', '팀장 · 개발', 'peach20040909', 'junho@mju.ac.kr'],
   ['김서연', '기획 · 자료 제작', 'seoyeon-kim', 'seoyeon@mju.ac.kr'],
   ['이다은', '개발 · 테스트', 'daeun-lee', 'daeun@mju.ac.kr'],
   ['최민재', '시연 · 현장 준비', 'minjae-choi', 'minjae@mju.ac.kr'],
@@ -46,7 +46,7 @@ const REVIEWS = [
 export async function seedDemo(newKey) {
   const id = randomUUID();
   await run(`INSERT INTO teams (id, course, name, project, start_date, deadline, repo, tools, categories, weights, locked_at, closed_at, collected_at, prof_key)
-    VALUES (?, '캡스톤디자인(2)', '팀 3', '캠퍼스 분실물 매칭 앱', '2026-09-07', '2026-12-15', NULL, ?, ?, ?, '2026-09-11 10:00:00', '2026-12-15 23:59:59', '2026-12-15 23:59:59', ?)`,
+    VALUES (?, '캡스톤디자인(2)', '팀 3', '캠퍼스 분실물 매칭 앱', '2026-09-07', '2026-12-15', 'peach20040909/hanmankeum', ?, ?, ?, '2026-09-11 10:00:00', '2026-12-15 23:59:59', '2026-12-15 23:59:59', ?)`,
     id, JSON.stringify(['GitHub', 'Notion', '수동 기록']), JSON.stringify(['만들기', '다듬기', '이끌기']), JSON.stringify([45, 35, 20]), newKey());
   const ids = [];
   for (const [name, role, github, email] of MEMBERS) {
