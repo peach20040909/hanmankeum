@@ -7,7 +7,7 @@ import { computeScores } from './score.js';
 import { fetchGitHub, classify, detectAI, needsReview, AXES } from './collect.js';
 import { seedDemo } from './seed.js';
 import { summarize, draftStatement, draftText, compareDraft } from './generate.js';
-import { verifySignature, parsePageId, ancestors, pageInfo, userInfo, KIND } from './notion.js';
+import { verifySignature, parsePageId, ancestors, pageInfo, userInfo, checkAccess, KIND } from './notion.js';
 
 // Vercel 함수의 요청 본문 한도는 4.5MB. 첨부는 여유를 두고 3MB까지.
 const MAX_FILE = 3 * 1024 * 1024;
@@ -119,6 +119,12 @@ const routes = [
     profOnly(await authorize(ctx, id));
     await run('DELETE FROM teams WHERE id = ?', id);
     return { ok: true };
+  }],
+
+  ['GET', /^\/api\/teams\/([\w-]+)\/notion\/check$/, async ([id], _, ctx) => {
+    const a = profOnly(await authorize(ctx, id));
+    if (!a.t.notion_page) fail(400, 'Notion 팀 페이지를 먼저 등록해 주세요.');
+    return checkAccess(a.t.notion_page);
   }],
 
   ['PUT', /^\/api\/teams\/([\w-]+)\/notion$/, async ([id], b, ctx) => {

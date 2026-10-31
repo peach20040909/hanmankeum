@@ -41,10 +41,20 @@ export async function ancestors(pageId) {
   return ids;
 }
 
+const titleOf = page => page && Object.values(page.properties || {}).find(p => p.type === 'title')?.title?.map(t => t.plain_text).join('');
+
 export async function pageInfo(pageId) {
-  const page = await notion(`/pages/${pageId}`).catch(() => null);
-  const title = page && Object.values(page.properties || {}).find(p => p.type === 'title')?.title?.map(t => t.plain_text).join('');
-  return { title: title || '(제목 없음)', url: page?.url || null, createdBy: page?.created_by?.id || null };
+  const page = await notion(`/pages/${pageId}`).catch(e => { console.warn('[Notion]', e.message); return null; });
+  return { title: titleOf(page) || '(제목 없음)', url: page?.url || null, createdBy: page?.created_by?.id || null };
+}
+
+// 연결 점검: 토큰으로 팀 페이지와 사용자 정보를 읽을 수 있는지 확인한다 (교수 화면용)
+export async function checkAccess(pageId) {
+  const out = { token: !!process.env.NOTION_TOKEN };
+  if (!out.token) return out;
+  await notion(`/pages/${pageId}`).then(p => { out.page = 'ok'; out.title = titleOf(p) || '(제목 없음)'; }, e => { out.page = e.message; });
+  await notion('/users?page_size=1').then(() => { out.users = 'ok'; }, e => { out.users = e.message; });
+  return out;
 }
 
 export async function userInfo(userId) {
