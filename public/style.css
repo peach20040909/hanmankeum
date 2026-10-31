@@ -196,3 +196,27 @@ dialog.modal.wide{width:min(1040px,calc(100% - 48px))}
 .demo-banner{display:flex;gap:11px;align-items:flex-start;background:#fff8ec;border:1px solid #f0e2c6;border-radius:var(--radius);padding:14px 17px;margin-bottom:18px;font-size:12px;color:#86703f;line-height:1.8}
 .demo-banner .icon{flex:none;color:#c08a3e;margin-top:2px}
 .demo-banner strong{color:#6f5a2c}
+/* 인쇄: 화면용 여백이 커서 한 쪽에 팀원이 다 안 들어가던 문제 — 문서용으로 압축 */
+@media print{
+.demo-banner{padding:9px 12px;margin-bottom:12px;font-size:11px}
+.ai-work{padding:14px 16px}
+.ai-mark{width:30px;height:30px;border-radius:8px}
+.ai-mark .icon{width:17px;height:17px}
+.ai-work-top{gap:11px}
+.ai-work-top h2{font-size:15px;line-height:1.45}
+.ai-work-top>div>p:last-child{font-size:11px;margin-top:5px}
+.ai-todo{margin-top:12px;padding:10px 12px;gap:9px}
+.ai-todo strong{font-size:12px}
+.ai-limits{margin-top:10px}
+.ai-limits summary{display:none}
+.ai-limits p{margin-top:5px}
+.chart-card{padding:16px}
+.card-pad,.aux-card>summary{padding:16px}
+.aux-body{padding:2px 16px 16px}
+.contribution-row{padding:11px 0}
+.chart-legend{padding-bottom:4px}
+.weight-inline{margin-top:12px;padding-top:12px}
+.reference-banner{padding:9px 11px;margin-top:10px}
+.page-heading{margin-bottom:14px}
+.project-strip{padding:12px 16px;margin-bottom:12px}
+}
