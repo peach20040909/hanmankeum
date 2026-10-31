@@ -192,3 +192,7 @@ dialog.modal.wide{width:min(1040px,calc(100% - 48px))}
 .aux-body>h3:first-child{margin-top:18px}
 
 .status-grid span{white-space:nowrap}
+/* 시연용 예시 팀 안내 */
+.demo-banner{display:flex;gap:11px;align-items:flex-start;background:#fff8ec;border:1px solid #f0e2c6;border-radius:var(--radius);padding:14px 17px;margin-bottom:18px;font-size:12px;color:#86703f;line-height:1.8}
+.demo-banner .icon{flex:none;color:#c08a3e;margin-top:2px}
+.demo-banner strong{color:#6f5a2c}

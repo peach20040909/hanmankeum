@@ -164,6 +164,13 @@ function roleSwitch() {
   return `<div class="role-switch" role="group" aria-label="화면 전환"><button data-action="as" data-as="professor" class="${prof ? 'selected' : ''}" aria-pressed="${prof}">교수 화면</button><button data-action="as" data-as="student" class="${prof ? '' : 'selected'}" aria-pressed="${!prof}">${esc(k.name || '학생')} 화면</button></div>`;
 }
 
+// 시연용 예시 팀임을 숨기지 않고 먼저 밝힌다
+function demoBanner() {
+  const t = state.team;
+  const real = (state.records || []).filter(r => r.url).length;
+  return `<div class="demo-banner">${icon('info')}<div><strong>시연용 예시 팀입니다.</strong> 기여율·동료 증언·자기 기술은 설명을 위해 만든 예시 데이터입니다.${t.repo ? ` 다만 <strong>${esc(t.repo)}</strong> 저장소는 실제로 연결돼 있어, <strong>GitHub 기록 수집</strong>을 누르면 진짜 커밋이 원본 링크와 함께 들어옵니다${real ? ` (현재 실제 기록 ${real}건)` : ''}.` : ''}</div></div>`;
+}
+
 function projectStrip() {
   const t = state.team;
   const status = t.closed ? tag(`${icon('check', 'sm')} 마감 · 산출 가능`, 'green') : t.locked_at ? tag(`${icon('lock', 'sm')} 착수 설정 완료`, 'green') : tag('착수 설정 중', 'amber');
@@ -178,7 +185,7 @@ function render() {
   const [title, subtitle] = TITLES[state.view];
   const exportBtn = t && isProf() && state.view === 'report' && state.report ? `<button class="button" data-action="export">${icon('download', 'sm')} PDF 내보내기</button>` : '';
   const view = { home: homeView, report: reportView, evidence: evidenceView, setup: setupView, statement: statementView, peer: peerView }[state.view]();
-  $('#content').innerHTML = `<div class="page-heading"><div class="heading-main"><span class="heading-icon">${icon('users')}</span><div><h1>${title}</h1><p class="page-subtitle">${subtitle}</p></div></div><div class="page-actions">${t ? roleSwitch() : ''}${exportBtn}</div></div>${t ? projectStrip() : ''}<section id="view-panel">${view}</section><footer class="page-foot"><span>${DISCLAIMER}</span><span>Team HMK</span></footer>`;
+  $('#content').innerHTML = `<div class="page-heading"><div class="heading-main"><span class="heading-icon">${icon('users')}</span><div><h1>${title}</h1><p class="page-subtitle">${subtitle}</p></div></div><div class="page-actions">${t ? roleSwitch() : ''}${exportBtn}</div></div>${t ? projectStrip() : ''}${t && t.demo ? demoBanner() : ''}<section id="view-panel">${view}</section><footer class="page-foot"><span>${DISCLAIMER}</span><span>Team HMK</span></footer>`;
   document.title = `한만큼 · ${t ? `${t.name} ${title}` : title}`;
 }
 
@@ -212,7 +219,7 @@ const axisCaption = counts => counts.map((n, i) => `${AXIS_SHORT[i]} ${n}`).join
 function reportView() {
   const t = state.team;
   if (!t.closed) {
-    return `<div class="report-grid"><div class="stack"><div class="setup-banner"><div class="lock-symbol">${icon('clock', 'lg')}</div><div><h2>학기 중에는 기여율을 산출하지 않습니다</h2><p>${esc(t.deadline)} 마감 후 1회 산출합니다. 그 전까지는 기록만 조용히 모읍니다. 학생에게 알림·점수·순위를 보여주지 않습니다.</p></div></div>${collectCard()}<section class="card card-pad"><h2>시연용 마감 처리</h2><p class="card-desc">마감일 전에 결과를 보여줘야 할 때 사용합니다. 마감 후 학생의 자기 기술과 익명 동료평가가 열립니다.</p><button class="button soft small mt16" data-action="close" ${t.locked_at ? '' : 'disabled'}>${icon('lock', 'sm')} 지금 마감 처리</button></section></div><aside class="stack aside-stack">${teamCard()}${scopeCard()}</aside></div>`;
+    return `<div class="report-grid"><div class="stack"><div class="setup-banner"><div class="lock-symbol">${icon('clock', 'lg')}</div><div><h2>학기 중에는 기여율을 산출하지 않습니다</h2><p>${esc(t.deadline)} 마감 후 최초 산출하고, 교수님이 확인 필요 기록을 검토하면 그만큼 정정됩니다. 그 전까지는 기록만 조용히 모읍니다. 학생에게 알림·점수·순위를 보여주지 않습니다.</p></div></div>${collectCard()}<section class="card card-pad"><h2>시연용 마감 처리</h2><p class="card-desc">마감일 전에 결과를 보여줘야 할 때 사용합니다. 마감 후 학생의 자기 기술과 익명 동료평가가 열립니다.</p><button class="button soft small mt16" data-action="close" ${t.locked_at ? '' : 'disabled'}>${icon('lock', 'sm')} 지금 마감 처리</button></section></div><aside class="stack aside-stack">${teamCard()}${scopeCard()}</aside></div>`;
   }
   const { scores, reviews } = state.report;
   const rows = t.members.map((m, i) => {
@@ -241,7 +248,7 @@ function aiWorkCard() {
 function aiUseTable() {
   const recs = state.report.records;
   const rows = state.team.members.map(m => { const mine = recs.filter(r => r.member_id === m.id); return [m, mine.length, mine.filter(r => r.ai_assisted).length]; });
-  return `<h3>팀원별 AI 도움 기록</h3><p class="card-desc">감점이 아니라 사람이 한 부분과 AI가 도운 부분을 구분해 보기 위한 정보입니다.</p><div class="table-wrap mt16"><table><thead><tr><th>팀원</th><th>전체 기록</th><th>AI 도움 기록</th></tr></thead><tbody>${rows.map(([m, n, a]) => `<tr><td>${esc(m.name)}</td><td>${n}건</td><td>${a ? `<button class="table-link" data-action="member" data-id="${m.id}">${a}건</button>` : '0건'}</td></tr>`).join('')}</tbody></table></div>`;
+  return `<h3>팀원별 AI 사용 표시</h3><p class="card-desc">감점이 아니라 사람이 한 부분과 AI가 도운 부분을 구분해 보기 위한 정보입니다. <strong>표시가 없다고 AI를 쓰지 않았다는 뜻은 아닙니다</strong> — 커밋의 공동 작성자 표시나 본인이 직접 남긴 표시처럼 <strong>확인 가능한 흔적만</strong> 셉니다.</p><div class="table-wrap mt16"><table><thead><tr><th>팀원</th><th>전체 기록</th><th>AI 사용 표시</th></tr></thead><tbody>${rows.map(([m, n, a]) => `<tr><td>${esc(m.name)}</td><td>${n}건</td><td>${a ? `<button class="table-link" data-action="member" data-id="${m.id}">${a}건</button>` : '<span class="muted">표시 미확인</span>'}</td></tr>`).join('')}</tbody></table></div>`;
 }
 
 const draftNote = st => st.ai_draft ? `<details class="dropped mt16"><summary>${tag('AI 초안 사용', 'violet')} ${diffLine(st.draft_diff)} · 학생 대조 확인 ✓</summary><p class="offline-story" style="white-space:pre-wrap">${esc(st.ai_draft)}</p></details>` : '';
@@ -304,7 +311,7 @@ function setupView() {
   const stepInvite = prof
     ? `<section class="card setup-step"><div class="between"><h2><span class="count-circle">1</span>팀원 초대</h2>${tag(`팀원 ${t.members.length}명`, 'gray')}</div><p class="card-desc">팀원마다 개인 초대 링크를 보내 주세요. 링크로 들어온 학생만 이 팀 화면을 볼 수 있습니다.</p>${t.members.map(m => `<div class="invite-row">${avatar(m)}<span class="student-name">${esc(m.name)}</span>${m.confirmed_at ? tag('기준 확인', 'green') : tag('확인 대기', 'gray')}<span class="spacer"></span><button class="button small" data-action="copy" data-text="${esc(inviteUrl(m.key))}">초대 링크 복사</button><button class="button small text" data-action="view-as" data-key="${esc(m.key)}" data-name="${esc(m.name)}">이 학생으로 보기</button></div>`).join('')}</section>`
     : `<section class="card setup-step"><div class="between"><h2><span class="count-circle">1</span>우리 팀</h2>${tag(`팀원 ${t.members.length}명`, 'gray')}</div><p class="card-desc">${t.members.map(m => esc(m.name)).join(' · ')}</p></section>`;
-  const quiet = !prof && t.locked_at && !t.closed ? `<div class="hero-dark" style="margin-bottom:20px"><div class="check">${icon('check')}</div><h2>착수 준비 완료</h2><p>학기 중에는 알림도 점수도 없어요.<br>평소처럼 작업하면 됩니다.</p></div>` : `<div class="setup-banner"><div class="lock-symbol">${icon('lock', 'lg')}</div><div><h2>${t.locked_at ? '착수 설정이 완료되었습니다' : '착수 설정을 진행해 주세요'}</h2><p>${t.locked_at ? `${lockLabel(t)}. 마감 후 한 번만 산출합니다.` : '도구 연결 → 교수가 MRL 가중치 설정 → 학생 확인·의견 → 교수 잠금'}</p></div></div>`;
+  const quiet = !prof && t.locked_at && !t.closed ? `<div class="hero-dark" style="margin-bottom:20px"><div class="check">${icon('check')}</div><h2>착수 준비 완료</h2><p>학기 중에는 알림도 점수도 없어요.<br>평소처럼 작업하면 됩니다.</p></div>` : `<div class="setup-banner"><div class="lock-symbol">${icon('lock', 'lg')}</div><div><h2>${t.locked_at ? '착수 설정이 완료되었습니다' : '착수 설정을 진행해 주세요'}</h2><p>${t.locked_at ? `${lockLabel(t)}. 마감 후 최초 산출 · 검토에 따라 정정됩니다.` : '도구 연결 → 교수가 MRL 가중치 설정 → 학생 확인·의견 → 교수 잠금'}</p></div></div>`;
   const aside = `<section class="card card-pad"><h2 style="font-size:14px;margin-bottom:22px">진행 순서</h2><div class="timeline"><div class="timeline-item ${!t.locked_at ? 'current' : ''}"><strong>MRL 가중치 설정 · 확인 · 잠금</strong><p>교수 설정 → 학생 확인·의견 → 교수 잠금 (확인 ${nConfirm}/${t.members.length})</p></div><div class="timeline-item ${t.locked_at && !t.closed ? 'current' : ''}"><strong>학기 중 · 평소처럼 작업</strong><p>알림·점수·순위 없음</p></div><div class="timeline-item ${t.closed ? 'current' : ''}"><strong>마감 후</strong><p>기여율 1회 산출 · 자기 기술 · 익명 동료평가</p></div></div></section>${prof ? `<section class="card student-note"><h3>교수용 링크</h3><p>다른 기기에서 교수 화면을 열 때 사용하세요. 학생에게 공유하지 마세요.</p><button class="button text small mt16" data-action="copy" data-text="${esc(inviteUrl(t.prof_key))}">교수 링크 복사 ${icon('link', 'sm')}</button></section>` : axisCard()}`;
   return `${quiet}<div class="setup-grid"><div class="stack">${stepInvite}${stepTools}${stepWeights}${stepConfirm}${stepLock}</div><aside class="stack aside-stack">${aside}</aside></div>`;
 }
