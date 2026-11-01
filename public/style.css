@@ -317,3 +317,4 @@ dialog.modal.wide{width:min(1040px,calc(100% - 48px))}
 .status-grid span{white-space:normal;word-break:keep-all}
 
 .flex.wrap{flex-wrap:wrap}
+.table-wrap.text td:last-child,.table-wrap.text th:last-child{text-align:left}
