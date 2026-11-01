@@ -127,6 +127,15 @@ const routes = [
     return checkAccess(a.t.notion_page);
   }],
 
+  ['PUT', /^\/api\/teams\/([\w-]+)\/repo$/, async ([id], b, ctx) => {
+    const a = profOnly(await authorize(ctx, id));
+    if (isClosed(a.t)) fail(409, '마감된 팀입니다.');
+    const repo = String(b.repo || '').trim().replace(/^https?:\/\/github\.com\//i, '').replace(/\.git$/, '').replace(/\/+$/, '') || null;
+    if (repo && (!/^[\w.-]+\/[\w.-]+$/.test(repo) || repo.includes('..'))) fail(400, '저장소는 owner/name 형식이어야 합니다.');
+    await run('UPDATE teams SET repo = ?, tools = ? WHERE id = ?', repo, toolsOf(repo, a.t.notion_page), id);
+    return teamView(id, a);
+  }],
+
   ['PUT', /^\/api\/teams\/([\w-]+)\/notion$/, async ([id], b, ctx) => {
     const a = profOnly(await authorize(ctx, id));
     if (isClosed(a.t)) fail(409, '마감된 팀입니다.');
