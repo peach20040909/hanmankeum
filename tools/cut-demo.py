@@ -18,19 +18,22 @@ STEPS = [  # (키, 단계명, 설명)
     ("weights", "MRL 가중치 잠금",    "만들기 · 다듬기 · 이끌기 비중을 정하고, 결과를 모르는 지금 잠급니다."),
     ("collect", "기록 수집 · 자동 분류", "학기 중에는 알림도 점수도 없습니다. 기록이 3축으로 분류됩니다."),
     ("peer",    "익명 동료평가",      "기록에 없는 기여는 마감 후 익명 증언으로 보완합니다."),
-    ("report",  "기여도 리포트",      "마감 후 1회 산출. 판정하지 않고 산식과 근거를 전달합니다."),
+    ("report",  "기여도 리포트",      "마감 후 최초 산출. 판정하지 않고 산식과 근거를 전달합니다."),
 ]
 KEYS = [s[0] for s in STEPS]
 
 # 버전별 구간: (단계, 녹화 시작초, 길이초)
 VERSIONS = {
+    # 2026-11-01 재녹화 기준 (총 81.3s / invite 0.7 · weights 6.4 · collect 24.4 · peer 42.5 · report 54.6)
     "short": ("한만큼_시연_15초.mp4", False, [
-        ("weights", 21.6, 2.7), ("collect", 30.8, 2.7), ("peer", 39.8, 3.3), ("report", 49.8, 2.8), ("report", 59.0, 3.5),
+        ("weights", 14.0, 3.0), ("collect", 33.5, 3.2), ("peer", 47.0, 3.4), ("report", 56.0, 3.2), ("report", 70.0, 3.2),
     ]),
     "core": ("한만큼_시연_40초.mp4", False, [
-        ("invite", 1.8, 3.4), ("weights", 8.0, 5.6), ("weights", 20.6, 3.7),
-        ("collect", 25.2, 3.6), ("collect", 30.2, 4.4),
-        ("peer", 37.4, 7.8), ("report", 48.8, 5.8), ("report", 57.6, 5.7),
+        ("invite", 1.6, 3.8),
+        ("weights", 8.5, 5.0), ("weights", 19.5, 4.2),
+        ("collect", 26.0, 4.0), ("collect", 33.0, 4.6),
+        ("peer", 46.5, 6.2),
+        ("report", 55.8, 5.6), ("report", 63.5, 4.4), ("report", 71.5, 5.0),
     ]),
     "full": ("한만큼_시연_전체.mp4", False, [(k, None, None) for k in KEYS]),
 }
@@ -61,17 +64,19 @@ def wrap(text, font, width):
 
 
 def logo_mark(img, x, y, size):
-    """앱 로고와 같은 마크: 라운드 사각형 + 높이가 다른 막대 3개"""
+    """앱 로고와 같은 마크: 기록 2줄 + 확인 배지 (public/index.html 의 #logo 와 동일)"""
     ss = 4  # 안티에일리어싱용 확대 배율
     m = Image.new("RGBA", (size * ss, size * ss), (0, 0, 0, 0))
     md = ImageDraw.Draw(m)
     u = size * ss / 32  # 32 단위 좌표계
-    md.rounded_rectangle((0, 0, size * ss - 1, size * ss - 1), int(9 * u), fill=(61, 110, 240, 255))
-    for bx, by, alpha in ((7.5, 17, 150), (13.9, 12, 205), (20.3, 7, 255)):
-        md.rounded_rectangle((bx * u, by * u, (bx + 4.2) * u, 25 * u), int(2.1 * u), fill=(255, 255, 255, alpha))
+    md.rounded_rectangle((0, 0, size * ss - 1, size * ss - 1), int(9 * u), fill=(47, 99, 232, 255))
+    md.rounded_rectangle((7.4 * u, 8.6 * u, 24.6 * u, 11.6 * u), int(1.5 * u), fill=(255, 255, 255, 255))
+    md.rounded_rectangle((7.4 * u, 14.4 * u, 18.4 * u, 17.4 * u), int(1.5 * u), fill=(255, 255, 255, 153))
+    md.ellipse((15 * u, 15.4 * u, 28.2 * u, 28.6 * u), fill=(255, 255, 255, 255))
+    md.line([(18.9 * u, 22.1 * u), (20.8 * u, 24 * u), (24.7 * u, 19.8 * u)],
+            fill=(47, 99, 232, 255), width=int(2.4 * u), joint="curve")
     mark = m.resize((size, size), Image.LANCZOS)
     img.paste(mark, (x, y), mark)
-
 
 def panel(step_i, progress):
     img = Image.new("RGB", (PANEL, H), BG)

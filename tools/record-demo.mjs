@@ -127,7 +127,11 @@ await wait(3200);
 await open(demo.prof_key, 'evidence');
 await wait(1400);
 await scrollTo('.evidence-list', 900);
-await wait(3000);
+await wait(2600);
+// AI 분류와 규칙 판단이 엇갈린 기록만 보기
+await click('[data-action="flag"][data-flag="review"]', 2600);
+await wait(2200);
+await click('[data-action="flag"][data-flag="all"]', 1400);
 
 // 4. 익명 동료평가 (학생)
 step('peer');
@@ -150,6 +154,9 @@ await cursor();
 // 5. 기여도 리포트 (교수)
 step('report');
 await open(demo.prof_key, 'report');
+await wait(1200);
+await scrollTo('.ai-work', 900);   // AI가 분류한 건수 · 사람이 확인할 건수
+await wait(3600);
 await scrollTo('.chart-card', 900);
 await wait(3000);
 await click('.contribution-row', 1600);
