@@ -302,3 +302,10 @@ dialog.modal.wide{width:min(1040px,calc(100% - 48px))}
 /* 목록 위 '선택한 기록 N건 · 최신 활동순' 줄 — 필터 버튼에 붙어 있고 글자가 작던 문제 */
 .list-meta{font-size:12px;color:#6b7385;margin:16px 0 10px;padding-top:14px;border-top:1px solid var(--line)}
 .list-meta strong{font-weight:700}
+/* 익명 배지: .notice-strong .icon 의 파란색이 흰 아이콘을 덮어 파란 상자만 보이던 문제 */
+.notice-strong .anon-seal .icon{color:#fff}
+/* 동료평가 설문: 라벨·보조설명·입력이 한 줄에 뒤섞여 읽기 어렵던 문제 */
+.peer-card .form-grid .field{display:flex;flex-direction:column;align-items:stretch;gap:7px;font-size:13px;font-weight:650;color:#434b5e}
+.peer-card .form-grid .field small{font-weight:500;font-size:12px;color:#8b92a3}
+.peer-card .form-grid .select-control,.peer-card .form-grid .textarea{width:100%}
+.peer-card .form-grid{gap:20px}
