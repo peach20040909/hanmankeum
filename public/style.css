@@ -251,3 +251,10 @@ dialog.modal.wide{width:min(1040px,calc(100% - 48px))}
 .testimony-row .icon,.aux-arrow,.chart-legend span:last-child,.detail-section-title .button{display:none}
 .aux-card>summary{border-bottom:1px solid var(--line)}
 }
+/* 쪽을 넘겨 시작하는 블록은 스스로 윗여백을 갖는다.
+   body padding은 문서에 한 번만 붙어서 2쪽부터는 윗여백이 없었다.
+   (브라우저 인쇄 여백을 '없음'으로 둬도 답답하지 않게) */
+@media print{
+.dossier{padding-top:16mm}
+.print-table{padding-top:12mm}
+}
