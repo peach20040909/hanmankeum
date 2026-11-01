@@ -4,7 +4,43 @@
 
 흩어진 팀 프로젝트 작업 기록(GitHub · Notion · Docs)을 모아, 교수님이 **근거와 함께** 기여를 확인하는 웹 서비스입니다.
 
-[서비스 시연][(https://hanmankeum.vercel.app/)] 
+[서비스 바로 보기](https://hanmankeum.vercel.app/) · [MIT License](LICENSE)
+
+
+## 5분 안에 직접 확인하기
+
+API 키 없이도 전부 동작합니다. AI 키가 없으면 규칙 기반으로 자동 전환되고, 화면에 그렇게 표시됩니다.
+
+```bash
+git clone https://github.com/peach20040909/hanmankeum.git
+cd hanmankeum && npm install
+npm test        # 11개 통과 — 무엇을 검증하는지는 아래 '테스트' 참고
+npm start       # http://localhost:3000
+```
+
+첫 화면에서 **시연용 예시 팀 불러오기**를 누르면 마감된 팀의 리포트가 열립니다. 여기서 확인할 수 있는 것:
+
+| 확인할 것 | 어디서 |
+|---|---|
+| AI가 분류한 건수와, AI·규칙이 엇갈려 **사람이 확인해야 할 건수** | 기여도 리포트 상단 `AI가 한 일` |
+| 기여율이 어떤 식으로 나왔는지 (축별 건수 × 가중치) | `산출 기준 보기` · PDF 내보내기 |
+| 기록이 0건인 학생을 무임승차로 단정하지 않는 처리 | 최민재 행 → 클릭 |
+| AI가 쓴 문장 중 **근거 검증에서 탈락한 문장과 그 이유** | AI 요약 · 자기 기술 |
+| 교수에게도 이름이 보이지 않는 익명 동료평가 | 참고 자료 → 동료 증언 |
+| 실제 GitHub 커밋 수집 (원본 링크가 열림) | 활동 근거 → `GitHub 기록 수집` |
+
+**PDF 내보내기**를 누르면 팀 요약 2쪽 + 학생별 소명 자료 1쪽씩이 나옵니다. 교수가 성적을 매기고 학생에게 설명하는 데 쓰는 문서입니다.
+
+## 테스트
+
+`npm test` — 외부 네트워크 없이 실제 서버를 띄워 돌립니다.
+
+| 파일 | 검증 내용 |
+|---|---|
+| `api.test.js` | 착수→잠금→마감 흐름, 초대 키 권한(학생이 리포트 접근 403), 동료평가 1회 제한, 익명 처리, 첨부 3MB 한도와 본인 첨부만 열람, 확인 필요·AI 도움 표시 |
+| `score.test.js` | 가중치 × 축 내 상대비율 합산, 기록이 없는 축의 가중치 재배분(팀 합 100% 유지) |
+| `collect.test.js` | 규칙 분류가 MRL 3축에 맞게 떨어지는지, Notion 웹훅 서명 검증과 페이지 링크 파싱 |
+| `generate.test.js` | 근거 번호 검증(없는 번호·근거 없음·평가 표현 제외), 근거-내용 연결이 약한 문장 표시, 초안 대비 수정률 |
 
 ## 포트폴리오 소개
 
@@ -124,10 +160,12 @@ Notion API 조회는 블록마다 **마지막 편집자**만 알려주고 편집
 
 ## 구조
 
+자세한 데이터 흐름과 수집·AI 전달 범위는 [docs/architecture.md](docs/architecture.md)에 있습니다.
+
 ```
 handler.js   API 핸들러 (Web 표준 Request/Response), 초대 키 권한
 server.js    로컬 실행용 node:http 어댑터 + 정적 파일
-api/index.js Vercel 함수 진입점 (app.js의 handle을 그대로 사용)
+api/index.js Vercel 함수 진입점 (handler.js의 handle을 그대로 사용)
 db.js        libSQL(Turso) 연결 · 스키마 · 컬럼 마이그레이션
 collect.js   MRL 3축 정의 · GitHub 수집 · Claude/규칙 분류 · AI 사용 감지
 notion.js    Notion 웹훅 서명 검증 · 페이지/사용자 조회
