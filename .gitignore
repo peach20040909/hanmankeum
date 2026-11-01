@@ -4,3 +4,7 @@ node_modules/
 *.db-*
 .claude/
 .vercel
+
+# 작업용 임시 스크립트
+_*.mjs
+_*.py
