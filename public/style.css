@@ -34,9 +34,10 @@
 .sidebar{bottom:0;padding:22px 16px 20px;gap:4px}
 .side-label{font-size:12px;font-weight:700;color:#9aa1b2;letter-spacing:.4px;padding:14px 12px 6px}
 .side-team{display:block;padding:14px;border-radius:12px;background:linear-gradient(135deg,#f3f6ff,#f8f7ff);border:1px solid #e6ebfb;margin-bottom:6px}
-.side-team small{display:block;font-size:12px;color:#6b7385;font-weight:600}
-.side-team strong{display:block;font-size:14px;color:#1e2434;margin:3px 0 8px;line-height:1.4;word-break:keep-all}
-.side-team .status{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:#434b5e}
+.side-team small{display:block;font-size:12px;color:#6b7385;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.side-team strong{display:block;font-size:14px;color:#1e2434;margin:3px 0 8px;line-height:1.4;word-break:keep-all;text-wrap:balance}
+.side-team .status{display:flex;align-items:flex-start;gap:6px;font-size:12px;font-weight:700;color:#434b5e;line-height:1.55;word-break:keep-all}
+.side-team .status i{margin-top:5px}
 .side-team .status i{width:7px;height:7px;border-radius:50%;background:var(--dot,#c0c5d2)}
 .side-foot{margin-top:auto;padding:16px 12px 0;border-top:1px solid var(--line)}
 .side-foot p{font-size:12px;line-height:1.7;color:#6b7385}

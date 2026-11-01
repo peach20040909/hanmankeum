@@ -149,8 +149,8 @@ function renderChrome() {
       : [['setup', 'lock', '착수 설정'], ['evidence', 'folder', '활동 기록'], ['statement', 'pencil', 'AI 요약 · 자기 기술'], ['peer', 'message', '동료평가']];
     for (const [v, ic, label] of tabs) nav.push([`#/team/${t.id}/${v}`, ic, label, state.view === v]);
   }
-  const [statusText, dot] = !t ? [] : t.closed ? (t.needs_review ? [`마감 · 잠정 산출 · 검토 ${t.needs_review}건 남음`, '#c08a3e'] : ['마감 · 산출 완료', '#358976']) : t.locked_at ? ['진행 중 · 기록 수집', '#4b7cf3'] : ['착수 설정 중', '#d39b3a'];
-  $('#side-team').innerHTML = t ? `<a class="side-team" href="#/team/${t.id}"><small>${esc(t.course)} · ${esc(t.name)}</small><strong>${esc(t.project)}</strong><span class="status" style="--dot:${dot}"><i></i>${statusText}</span></a>` : '';
+  const [statusText, dot] = !t ? [] : t.closed ? (t.needs_review ? [`마감 · 잠정 산출 · 검토 ${t.needs_review}건`, '#c08a3e'] : ['마감 · 산출 완료', '#358976']) : t.locked_at ? ['진행 중 · 기록 수집', '#4b7cf3'] : ['착수 설정 중', '#d39b3a'];
+  $('#side-team').innerHTML = t ? `<a class="side-team" href="#/team/${t.id}"><small>${esc(t.name)} · ${esc(t.course)}</small><strong>${esc(t.project)}</strong><span class="status" style="--dot:${dot}"><i></i>${statusText}</span></a>` : '';
   $('#side-nav').innerHTML = nav.map(([href, ic, label, active]) => `<a class="nav-item ${active ? 'active' : ''}" href="${href}" ${active ? 'aria-current="page"' : ''}>${icon(ic)}${label}</a>`).join('');
   $('#bottom-nav').innerHTML = nav.map(([href, ic, label, active]) => `<a class="${active ? 'active' : ''}" href="${href}" aria-label="${label}" style="display:grid;place-items:center">${icon(ic)}<span>${label}</span></a>`).join('');
 }
