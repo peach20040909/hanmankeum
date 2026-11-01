@@ -299,3 +299,6 @@ dialog.modal.wide{width:min(1040px,calc(100% - 48px))}
 /* 공백 없는 긴 이름(URL·연속 문자)이 상자 밖으로 넘치던 문제.
    keep-all 은 한글 단어를 지켜주지만 끊을 곳이 없는 문자열은 막지 못한다. */
 .side-team strong,.project-title,.project-tile h2,.student-name,.evidence-title,.dossier-head h2{overflow-wrap:anywhere}
+/* 목록 위 '선택한 기록 N건 · 최신 활동순' 줄 — 필터 버튼에 붙어 있고 글자가 작던 문제 */
+.list-meta{font-size:12px;color:#6b7385;margin:16px 0 10px;padding-top:14px;border-top:1px solid var(--line)}
+.list-meta strong{font-weight:700}
