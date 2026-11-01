@@ -134,3 +134,38 @@ test('AI 리터러시: 확인 필요 · AI 도움 표시', async t => {
   assert.equal(st.draft_diff.added, 1);
   assert.equal((await c2(`/teams/${id}/draft`, ks, 'POST')).status, 409); // 제출 후 초안 재생성 불가
 });
+
+// 보안 검토(2026-11-01)에서 나온 취약점의 재발 방지
+test('학생이 와일드카드 이메일로 남의 기록을 가져가지 못한다', async t => {
+  const dir = mkdtempSync(join(tmpdir(), 'hmk-sec-'));
+  const srv = spawn(process.execPath, ['server.js'], { env: { ...process.env, PORT: String(PORT + 20), DB_PATH: join(dir, 'x.db') }, stdio: 'ignore' });
+  t.after(() => srv.kill());
+  const B2 = `http://localhost:${PORT + 20}/api`;
+  const c = async (path, key, method = 'GET', body) => {
+    const res = await fetch(B2 + path, { method, headers: { 'Content-Type': 'application/json', ...(key ? { 'X-Key': key } : {}) }, body: body && JSON.stringify(body) });
+    return { status: res.status, data: await res.json() };
+  };
+  for (let i = 0; i < 60; i++) { try { await fetch(B2 + '/health'); break; } catch { await new Promise(r => setTimeout(r, 100)); } }
+
+  const t1 = (await c('/teams', null, 'POST', {
+    course: '보안', name: '팀', project: '검증', deadline: '2027-01-01',
+    members: [{ name: '가' }, { name: '나' }],
+  })).data.team;
+  const [m1] = t1.members;
+
+  // LIKE 와일드카드가 들어간 이메일은 거부되어야 한다
+  for (const email of ['%@%', '_@_', '%@mju.ac.kr']) {
+    assert.equal((await c(`/teams/${t1.id}/members/${m1.id}/notion`, t1.prof_key, 'PUT', { email })).status, 400, email);
+  }
+  // 정상 이메일은 통과
+  assert.equal((await c(`/teams/${t1.id}/members/${m1.id}/notion`, t1.prof_key, 'PUT', { email: 'a@mju.ac.kr' })).status, 200);
+  // 같은 팀의 다른 팀원이 같은 이메일을 가져갈 수 없다
+  assert.equal((await c(`/teams/${t1.id}/members/${t1.members[1].id}/notion`, t1.prof_key, 'PUT', { email: 'a@mju.ac.kr' })).status, 409);
+
+  // 요약 이의: index 가 속성 키로 쓰이지 않는다
+  for (const index of ['__proto__', 'constructor', 'length', -1, 1.5]) {
+    const r = await c(`/teams/${t1.id}/summary/objection`, m1.key, 'POST', { index, text: 'x' });
+    assert.ok(r.status === 400 || r.status === 404, `${index} → ${r.status}`);
+  }
+  assert.equal(typeof ([].objection), 'undefined'); // Array.prototype 오염 없음
+});

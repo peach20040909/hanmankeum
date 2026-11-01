@@ -20,7 +20,8 @@ async function gh(path) {
 // GitHub 저장소에서 작성자·변경 기록 수집 (커밋 · PR · 리뷰 · 댓글 · 이슈)
 // ponytail: 최대 300 커밋 / 100 PR / 30 PR 리뷰. 대형 저장소면 페이지네이션 확장.
 export async function fetchGitHub(repo) {
-  if (!/^[\w.-]+\/[\w.-]+$/.test(repo || '')) throw new Error('저장소는 owner/name 형식이어야 합니다.');
+  // [\w.-] 는 '..' 를 허용해 /repos/../orgs 처럼 경로를 벗어날 수 있다
+  if (!/^[\w.-]+\/[\w.-]+$/.test(repo || '') || repo.includes('..')) throw new Error('저장소는 owner/name 형식이어야 합니다.');
   const out = [];
   for (let page = 1; page <= 3; page++) {
     const commits = await gh(`/repos/${repo}/commits?per_page=100&page=${page}`);

@@ -289,7 +289,8 @@ function aiUseTable() {
 }
 
 const draftNote = st => st.ai_draft ? `<details class="dropped mt16"><summary>${tag('AI 초안 사용', 'violet')} ${diffLine(st.draft_diff)} · 학생 대조 확인 ✓</summary><p class="offline-story" style="white-space:pre-wrap">${esc(st.ai_draft)}</p></details>` : '';
-const fileChips = st => st.files.length ? `<div class="flex gap8 mt16" style="flex-wrap:wrap">${st.files.map(f => `<a class="attachment-chip" href="/api/files/${f.id}?k=${encodeURIComponent(keyOf(state.team.id))}" target="_blank" rel="noopener noreferrer">${icon(f.mime.startsWith('image/') ? 'image' : 'paperclip')}${esc(f.name)}</a>`).join('')}</div>` : '';
+// 첨부는 X-Key 헤더로 받아 blob 으로 연다. 주소에 키를 실으면 브라우저 기록·서버 로그에 남는다.
+const fileChips = st => st.files.length ? `<div class="flex gap8 mt16" style="flex-wrap:wrap">${st.files.map(f => `<button type="button" class="attachment-chip" data-action="open-file" data-id="${f.id}" data-name="${esc(f.name)}">${icon(f.mime.startsWith('image/') ? 'image' : 'paperclip')}${esc(f.name)}</button>`).join('')}</div>` : '';
 
 function recordItem(r) {
   const m = memberBy(r.member_id);
@@ -530,6 +531,13 @@ document.addEventListener('click', e => {
       const tid = b.dataset.id;
       await api(`/teams/${tid}`, { method: 'DELETE' }, tid);
       delete keys[tid]; saveKeys(); closeModal(); route(); notify('팀 프로젝트를 삭제했습니다.');
+    }); break;
+    case 'open-file': run(async () => {
+      const res = await fetch(`/api/files/${b.dataset.id}`, { headers: { 'X-Key': keyOf(state.team.id) } });
+      if (!res.ok) throw new Error('첨부를 열 수 없습니다.');
+      const url = URL.createObjectURL(await res.blob());
+      window.open(url, '_blank', 'noopener');
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
     }); break;
     case 'member': memberModal(id); break;
     case 'record': recordModal(id); break;

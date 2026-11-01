@@ -92,7 +92,7 @@ async function createTeam(b) {
     b.repo || null, notionPage, toolsOf(b.repo, notionPage), JSON.stringify(AXES), JSON.stringify(weights), newKey());
   for (const m of members) {
     const email = (m.notion_email || '').trim().toLowerCase() || null;
-    if (email && !/^[^\s@]+@[^\s@]+$/.test(email)) fail(400, 'Notion 이메일 형식을 확인해 주세요.');
+    if (email && !/^[^\s@%_]+@[^\s@%_]+\.[^\s@%_]+$/.test(email)) fail(400, 'Notion 이메일 형식을 확인해 주세요.');
     await run('INSERT INTO members (team_id, name, role, github, notion_email, key) VALUES (?,?,?,?,?,?)',
       id, text(m.name, 20, '이름'), (m.role || '').slice(0, 30), (m.github || '').trim().replace(/^@/, '') || null, email, newKey());
   }
@@ -131,6 +131,11 @@ const routes = [
     const a = profOnly(await authorize(ctx, id));
     if (isClosed(a.t)) fail(409, '마감된 팀입니다.');
     const page = b.url ? parsePageId(b.url) || fail(400, 'Notion 페이지 링크를 확인해 주세요.') : null;
+    // 같은 페이지를 두 팀이 등록하면 이벤트가 먼저 등록한 팀으로만 가고, 남의 편집 이력이 샌다.
+    if (page) {
+      const claimed = await get('SELECT id FROM teams WHERE notion_page = ? AND id <> ?', page, id);
+      if (claimed) fail(409, '다른 팀이 이미 등록한 Notion 페이지입니다.');
+    }
     await run('UPDATE teams SET notion_page = ?, tools = ? WHERE id = ?', page, toolsOf(a.t.repo, page), id);
     return teamView(id, a);
   }],
@@ -139,9 +144,15 @@ const routes = [
     const a = await authorize(ctx, id);
     if (a.role === 'student' && a.me.id !== Number(mid)) fail(403, '본인 이메일만 수정할 수 있습니다.');
     const email = String(b.email || '').trim().toLowerCase() || null;
-    if (email && !/^[^\s@]+@[^\s@]+$/.test(email)) fail(400, 'Notion 이메일 형식을 확인해 주세요.');
+    // %, _ 는 LIKE 와일드카드다. 아래 조회에 그대로 들어가면 남의 기록까지 가져간다.
+    if (email && !/^[^\s@%_]+@[^\s@%_]+\.[^\s@%_]+$/.test(email)) fail(400, 'Notion 이메일 형식을 확인해 주세요.');
+    if (email) {
+      const taken = await get('SELECT id FROM members WHERE team_id = ? AND notion_email = ? AND id <> ?', id, email, mid);
+      if (taken) fail(409, '같은 팀의 다른 팀원이 이미 등록한 이메일입니다.');
+    }
     await run('UPDATE members SET notion_email = ? WHERE id = ? AND team_id = ?', email, mid, id);
-    if (email) await run("UPDATE records SET member_id = ? WHERE team_id = ? AND member_id IS NULL AND tool = 'Notion' AND lower(login) LIKE ?", mid, id, `%<${email}>`);
+    // LIKE 대신 정확 일치로 미매칭 기록을 연결한다 (login 형식: "이름 <이메일>")
+    if (email) await run("UPDATE records SET member_id = ? WHERE team_id = ? AND member_id IS NULL AND tool = 'Notion' AND substr(lower(login), instr(login, '<') + 1, length(login) - instr(login, '<') - 1) = ?", mid, id, email);
     return teamView(id, a);
   }],
 
@@ -308,7 +319,8 @@ const routes = [
     const a = studentOnly(await authorize(ctx, id));
     const row = await get('SELECT * FROM summaries WHERE team_id = ? AND member_id = ?', id, a.me.id) || fail(404, '요약이 없습니다.');
     const sentences = JSON.parse(row.sentences);
-    const s = sentences[b.index] || fail(400, '문장을 찾을 수 없습니다.');
+    if (!Number.isInteger(b.index) || b.index < 0 || b.index >= sentences.length) fail(400, '문장을 찾을 수 없습니다.');
+    const s = sentences[b.index];
     const note = optText(b.text, 300);
     if (note) Object.assign(s, { objection: note, objected_at: new Date().toISOString() }); else { delete s.objection; delete s.objected_at; }
     await run('UPDATE summaries SET sentences = ? WHERE id = ?', JSON.stringify(sentences), row.id);
@@ -416,7 +428,11 @@ export async function handle(request) {
       try { ev = JSON.parse(raw.toString()); } catch { fail(400, 'JSON 형식이 아닙니다.'); }
       // 구독 생성 직후 1회: 이 토큰을 Notion 화면에 붙여넣고, NOTION_WEBHOOK_SECRET 환경변수로 등록
       if (ev.verification_token && !ev.type) {
-        console.log(`[Notion] verification_token: ${ev.verification_token}`);
+        // 이 토큰이 곧 서명 비밀키다. 기본은 지문만 남기고, 최초 설정 때만 전체를 출력한다.
+        const tok = String(ev.verification_token);
+        console.log(process.env.NOTION_SETUP_LOG === '1'
+          ? `[Notion] verification_token: ${tok}`
+          : `[Notion] verification_token 수신 (${tok.slice(0, 10)}… 길이 ${tok.length}) — 전체 값이 필요하면 NOTION_SETUP_LOG=1 로 재시도하세요.`);
         return json(200, { ok: true });
       }
       if (!verifySignature(raw, request.headers.get('x-notion-signature'), process.env.NOTION_WEBHOOK_SECRET)) fail(401, '서명이 올바르지 않습니다.');
