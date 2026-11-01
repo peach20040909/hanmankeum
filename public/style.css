@@ -296,3 +296,6 @@ dialog.modal.wide{width:min(1040px,calc(100% - 48px))}
 .aux-card>summary{padding:18px 17px}
 .aux-body{padding:2px 17px 18px}
 }
+/* 공백 없는 긴 이름(URL·연속 문자)이 상자 밖으로 넘치던 문제.
+   keep-all 은 한글 단어를 지켜주지만 끊을 곳이 없는 문자열은 막지 못한다. */
+.side-team strong,.project-title,.project-tile h2,.student-name,.evidence-title,.dossier-head h2{overflow-wrap:anywhere}
