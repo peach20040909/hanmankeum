@@ -89,12 +89,17 @@ test('AI 리터러시: 확인 필요 · AI 도움 표시', async t => {
   };
   for (let i = 0; i < 100; i++) { try { await fetch(B2 + '/join/x'); break; } catch { await new Promise(r => setTimeout(r, 50)); } }
 
-  // 시연 팀: AI·규칙 판단이 다른 기록 2건, AI 도움 기록 2건
+  // 시연 팀: AI·규칙 판단이 다른 기록 2건. 기록은 실제 저장소의 커밋·PR이라
+  // AI 도움 표시는 커밋에 실제로 붙어 있는 공동 작성자 표시에서만 나온다.
   const { data: d } = await c2('/demo', null, 'POST');
   const id = d.team.id, P = d.prof_key;
   assert.equal(d.team.needs_review, 2);
-  assert.equal(d.team.ai_assisted, 2);
   const recs = (await c2(`/teams/${id}/records`, P)).data;
+  assert.ok(recs.length > 0 && recs.every(r => r.url), '시연 기록은 모두 원본 링크를 가진다');
+  // 표시가 있는 기록만 AI 도움으로 잡히는지 (지어낸 플래그가 아님을 확인)
+  const marked = recs.filter(r => /Co-Authored-By:\s*Claude|Generated with \[Claude/i.test(r.body || ''));
+  assert.equal(d.team.ai_assisted, marked.length);
+  assert.ok(marked.length >= 2 && marked.length < recs.length);
   const flagged = recs.filter(r => r.rule_type !== r.type);
   assert.ok(flagged.every(r => r.prompt_version === 'mrl-3axis-v2'));
 

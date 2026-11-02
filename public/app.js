@@ -168,7 +168,7 @@ function roleSwitch() {
 function demoBanner() {
   const t = state.team;
   const real = (state.records || []).filter(r => r.url).length;
-  return `<div class="demo-banner">${icon('info')}<div><strong>시연용 예시 팀입니다.</strong> 기여율·동료 증언·자기 기술은 설명을 위해 만든 예시 데이터입니다.${t.repo ? ` 다만 <strong>${esc(t.repo)}</strong> 저장소는 실제로 연결돼 있어, <strong>GitHub 기록 수집</strong>을 누르면 진짜 커밋이 원본 링크와 함께 들어옵니다${real ? ` (현재 실제 기록 ${real}건)` : ''}.` : ''}</div></div>`;
+  return `<div class="demo-banner">${icon('info')}<div><strong>시연용 예시 팀입니다.</strong> 작업 기록은 <strong>이 서비스를 만든 저장소의 실제 커밋·PR</strong>이라, 각 기록의 <strong>원본 열기</strong>를 누르면 GitHub로 갑니다.${t.repo ? ` 저장소도 그대로 연결돼 있어 <strong>GitHub 기록 수집</strong>을 누르면 새 커밋이 더 들어옵니다${real ? ` (현재 실제 수집 ${real}건)` : ''}.` : ''} 다만 <strong>팀원 배정·기여율·동료 증언·자기 기술은 화면 설명을 위해 구성한 예시</strong>입니다 — 실제 커밋은 대부분 한 계정에서 나왔습니다.</div></div>`;
 }
 
 function projectStrip() {
