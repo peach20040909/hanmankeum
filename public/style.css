@@ -224,7 +224,7 @@ dialog.modal.wide{width:min(1040px,calc(100% - 48px))}
 /* 인쇄 전용 학생별 상세 — 교수가 성적을 매기고 학생에게 설명할 수 있는 분량 */
 .dossier{display:none}
 @media print{
-.dossier{display:block;break-before:page;break-inside:auto}
+.dossier{display:block;break-before:page;break-inside:auto}.dossier:first-of-type{break-before:auto}.dossier-table .src{white-space:nowrap}.dossier-table .src a{color:#1e2434;border-bottom:.5px solid #b9c2d6;text-decoration:none}
 .dossier-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;border-bottom:2px solid #dfe3ec;padding-bottom:10px;margin-bottom:14px}
 .dossier-head h2{font-size:20px}
 .dossier-head p{font-size:11px;color:#6b7385;margin-top:3px}

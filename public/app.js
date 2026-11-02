@@ -228,7 +228,7 @@ function printDossier() {
     const st = t.statements.find(x => x.member_id === m.id);
     const revs = reviews.filter(r => r.target_id === m.id && r.basis !== '관찰 못 함');
     const calc = AXES.map((a, i) => `${a} ${s.counts[i]}건 · 팀 내 ${s.shares[i].toFixed(1)}% × 가중치 ${t.weights[i]}%`).join('<br>');
-    const rows = mine.map(r => `<tr><td>${fmtDate(r.date)}</td><td>${esc(r.tool)} · ${esc(r.kind)}</td><td>${esc(r.title)}${r.ai_assisted ? ' <strong>[AI 도움 표시]</strong>' : ''}</td><td>${esc(AXES[r.type] ?? '미분류')}</td><td class="src">${r.url ? esc(r.url) : '원본 링크 없음'}</td></tr>`).join('');
+    const rows = mine.map(r => `<tr><td>${fmtDate(r.date)}</td><td>${esc(r.tool)} · ${esc(r.kind)}</td><td>${esc(r.title)}${r.ai_assisted ? ' <strong>[AI 도움 표시]</strong>' : ''}</td><td>${esc(AXES[r.type] ?? '미분류')}</td><td class="src">${r.url ? `<a href="${esc(r.url)}">${esc(r.ref || '원본 보기')}</a>` : '원본 링크 없음'}</td></tr>`).join('');
     return `<section class="dossier">
       <div class="dossier-head"><div><h2>${esc(m.name)}</h2><p>${esc(m.role || '')}${m.github ? ` · @${esc(m.github)}` : ''}</p></div><div class="dossier-score">${s.score}<span>%</span></div></div>
       <h3>산출 근거</h3><p class="dossier-calc">${calc}<br><strong>합계 ${s.score}%</strong></p>
@@ -247,7 +247,7 @@ function printDossier() {
   const review = flagged.length ? `<section class="dossier"><h2>교수님이 확인할 기록 <span class="muted">${flagged.length}건</span></h2>
     <p class="dossier-calc">AI 분류와 규칙 판단이 엇갈린 기록입니다. 원본을 보고 축을 정하면 기여율이 그만큼 정정됩니다.</p>
     <table class="dossier-table"><thead><tr><th>날짜</th><th>작성자</th><th>내용</th><th>AI 분류</th><th>규칙 판단</th><th>원본</th></tr></thead><tbody>
-    ${flagged.map(r => { const m = memberBy(r.member_id); return `<tr><td>${fmtDate(r.date)}</td><td>${m ? esc(m.name) : '미매칭'}</td><td>${esc(r.title)}</td><td>${esc(AXES[r.type] ?? '-')}</td><td>${esc(AXES[r.rule_type] ?? '-')}</td><td class="src">${r.url ? esc(r.url) : '원본 링크 없음'}</td></tr>`; }).join('')}
+    ${flagged.map(r => { const m = memberBy(r.member_id); return `<tr><td>${fmtDate(r.date)}</td><td>${m ? esc(m.name) : '미매칭'}</td><td>${esc(r.title)}</td><td>${esc(AXES[r.type] ?? '-')}</td><td>${esc(AXES[r.rule_type] ?? '-')}</td><td class="src">${r.url ? `<a href="${esc(r.url)}">${esc(r.ref || '원본 보기')}</a>` : '원본 링크 없음'}</td></tr>`; }).join('')}
     </tbody></table></section>` : '';
   return pages + review;
 }
