@@ -14,7 +14,7 @@ API 키 없이도 전부 동작합니다. AI 키가 없으면 규칙 기반으�
 ```bash
 git clone https://github.com/peach20040909/hanmankeum.git
 cd hanmankeum && npm install
-npm test        # 11개 통과 — 무엇을 검증하는지는 아래 '테스트' 참고
+npm test        # 12개 통과 — 무엇을 검증하는지는 아래 '테스트' 참고
 npm start       # http://localhost:3000
 ```
 
@@ -40,7 +40,7 @@ npm start       # http://localhost:3000
 | `api.test.js` | 착수→잠금→마감 흐름, 초대 키 권한(학생이 리포트 접근 403), 동료평가 1회 제한, 익명 처리, 첨부 3MB 한도와 본인 첨부만 열람, 확인 필요·AI 도움 표시 |
 | `score.test.js` | 가중치 × 축 내 상대비율 합산, 기록이 없는 축의 가중치 재배분(팀 합 100% 유지) |
 | `collect.test.js` | 규칙 분류가 MRL 3축에 맞게 떨어지는지, Notion 웹훅 서명 검증과 페이지 링크 파싱 |
-| `generate.test.js` | 근거 번호 검증(없는 번호·근거 없음·평가 표현 제외), 근거-내용 연결이 약한 문장 표시, 초안 대비 수정률 |
+| `generate.test.js` | 근거 번호 검증(전부 없는 번호·근거 없음·평가 표현은 제외, 일부만 틀리면 유효한 근거만 남김), 근거-내용 연결이 약한 문장 표시, 초안 대비 수정률 |
 
 ## 포트폴리오 소개
 
