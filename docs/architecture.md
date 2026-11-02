@@ -68,7 +68,7 @@ crypto.randomBytes(18).base64url   →  teams.prof_key (교수) / members.key (�
 
 | 장치 | 위치 | 동작 |
 |---|---|---|
-| 교차 확인 | `collect.js` `needsReview` | AI 분류 ≠ 규칙 분류 → `확인 필요`, 교수가 확정해야 해제 |
+| 교차 확인 | `collect.js` `needsReview` | AI 분류 ≠ 규칙 분류 → `확인 필요`, 교수가 확정해야 해제. **일치는 정확성을 보증하지 않는다**(같이 틀릴 수 있음) |
 | 근거 ID 연결 검사 | `generate.js` `validateSentences` | 인용 번호가 실재하는지 서버가 검증, 없으면 문장째 제외 |
 | 평가 표현 차단 | `generate.js` `JUDGE` | 성실·능력·열심 등 기록으로 확인 불가능한 표현이 든 문장 제외 |
 | 약한 연결 표시 | `generate.js` `overlap` | 문장과 인용 기록의 2글자 조각 겹침이 낮으면 `연결 약함` 표시 |
