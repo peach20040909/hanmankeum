@@ -114,8 +114,10 @@ th{text-align:left;padding:2.4mm 3mm;background:#f4f5f9;color:#4b5467;font-weigh
  border-bottom:1.2px solid #d8dce6}
 td{padding:2.8mm 3mm;border-bottom:1px solid #eceef4;vertical-align:top}
 table{table-layout:auto}
-th:first-child,td:first-child{min-width:26mm}
+th:first-child,td:first-child{min-width:33mm}
 tr{break-inside:avoid}
+/* 표가 쪽을 넘길 때 머리글을 다시 찍는다 — 통째로 미뤄 큰 여백을 만드는 것보다 낫다 */
+thead{display:table-header-group;break-after:avoid}
 blockquote{margin:5mm 0;padding:4mm 5mm;background:#f7f8fc;border-left:3px solid #c0563a;font-size:10pt;
  break-inside:avoid}
 ul,ol{margin:3mm 0;padding-left:5.5mm}
