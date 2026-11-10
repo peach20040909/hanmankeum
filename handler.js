@@ -4,7 +4,8 @@
 import { randomUUID } from 'node:crypto';
 import { init, get, all, run, newKey } from './db.js';
 import { computeScores } from './score.js';
-import { ingestGitHub, classify, detectAI, needsReview, AXES } from './collect.js';
+import { ingestGitHub, classify, detectAI, needsReview, normalizeCriteria, draftCriteria, EXAMPLE_CRITERIA, KINDS } from './collect.js';
+import { hasAI, MODEL } from './ai.js';
 import { seedDemo } from './seed.js';
 import { summarize, draftStatement, draftText, compareDraft } from './generate.js';
 import { verifySignature, parsePageId, ancestors, pageInfo, userInfo, checkAccess, KIND } from './notion.js';
@@ -27,11 +28,17 @@ const text = (v, max, name) => {
 };
 const optText = (v, max) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, max) : null);
 
-function validateWeights(weights) {
-  if (!Array.isArray(weights) || weights.length !== AXES.length) fail(400, 'MRL 3축 가중치를 모두 입력해 주세요.');
-  if (weights.some(w => !Number.isInteger(w) || w < 0 || w > 100)) fail(400, '가중치는 0~100 정수입니다.');
-  if (weights.reduce((a, b) => a + b, 0) !== 100) fail(400, '3축 가중치 합계는 100%여야 합니다.');
+// 팀의 평가기준 항목. 기준 도입 전 팀(categories·weights만 있음)도 읽을 수 있게 둔다
+export function criteriaOf(t) {
+  if (t.criteria) return JSON.parse(t.criteria);
+  const names = JSON.parse(t.categories), ws = JSON.parse(t.weights);
+  return names.map((name, i) => ({ name, desc: '', weight: ws[i] ?? 0, keywords: [], kinds: [] }));
 }
+function strictCriteria(list) {
+  try { return normalizeCriteria(list, { strict: true }); } catch (e) { fail(e.status || 400, e.message); }
+}
+const saveCriteria = (id, criteria, rubric, meta) => run('UPDATE teams SET criteria = ?, categories = ?, weights = ?, rubric = ?, criteria_meta = ? WHERE id = ?',
+  JSON.stringify(criteria), JSON.stringify(criteria.map(c => c.name)), JSON.stringify(criteria.map(c => c.weight)), rubric, JSON.stringify(meta), id);
 
 // 초대 링크 키로 역할 확인: 교수 키 → professor, 팀원 키 → student(본인)
 async function authorize(ctx, teamId) {
@@ -64,13 +71,15 @@ async function teamView(teamId, a) {
   return {
     ...rest, ...(prof ? { prof_key } : {}),
     role: a.role, me_id: a.me?.id ?? null,
-    tools: JSON.parse(t.tools), categories: AXES, weights: JSON.parse(t.weights), closed: isClosed(t),
+    tools: JSON.parse(t.tools), criteria: criteriaOf(t), categories: criteriaOf(t).map(c => c.name), weights: criteriaOf(t).map(c => c.weight),
+    criteria_meta: t.criteria_meta ? JSON.parse(t.criteria_meta) : null, kinds: KINDS, ai: { on: hasAI(), model: hasAI() ? MODEL : null }, closed: isClosed(t),
     members, statements, opinions, summaries, draft,
     accepted_opinions: (await get("SELECT count(*) n FROM opinions WHERE team_id = ? AND status = 'accepted'", teamId)).n,
     record_count: (await get('SELECT count(*) n FROM records WHERE team_id = ?', teamId)).n,
     unmatched: (await get('SELECT count(*) n FROM records WHERE team_id = ? AND member_id IS NULL', teamId)).n,
     ...(prof ? {
       needs_review: (await all('SELECT * FROM records WHERE team_id = ?', teamId)).filter(needsReview).length,
+      outside: (await get('SELECT count(*) n FROM records WHERE team_id = ? AND type IS NULL', teamId)).n,
       ai_assisted: (await get('SELECT count(*) n FROM records WHERE team_id = ? AND ai_assisted = 1', teamId)).n,
     } : {}),
     reviewed: a.me ? !!await get('SELECT 1 FROM peer_reviews WHERE team_id = ? AND reviewer_id = ?', teamId, a.me.id) : null,
@@ -84,12 +93,13 @@ async function createTeam(b) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(b.deadline || '')) fail(400, '마감일을 입력해 주세요.');
   if (b.repo && !/^[\w.-]+\/[\w.-]+$/.test(b.repo)) fail(400, 'GitHub 저장소는 owner/name 형식입니다.');
   const notionPage = b.notion ? parsePageId(b.notion) || fail(400, 'Notion 페이지 링크를 확인해 주세요.') : null;
-  const weights = b.weights || [40, 35, 25]; // 균형 프리셋
-  validateWeights(weights);
+  // 기준은 착수 설정에서 교수 평가기준으로 바꾼다. 만들 때는 예시 기준으로 시작
+  const criteria = b.criteria ? strictCriteria(b.criteria) : EXAMPLE_CRITERIA;
   const id = randomUUID();
-  await run('INSERT INTO teams (id, course, name, project, start_date, deadline, repo, notion_page, tools, categories, weights, prof_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
+  await run('INSERT INTO teams (id, course, name, project, start_date, deadline, repo, notion_page, tools, categories, weights, criteria, criteria_meta, prof_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
     id, text(b.course, 60, '과목명'), text(b.name, 30, '팀 이름'), text(b.project, 60, '프로젝트명'), b.start_date || null, b.deadline,
-    b.repo || null, notionPage, toolsOf(b.repo, notionPage), JSON.stringify(AXES), JSON.stringify(weights), newKey());
+    b.repo || null, notionPage, toolsOf(b.repo, notionPage), JSON.stringify(criteria.map(c => c.name)), JSON.stringify(criteria.map(c => c.weight)), JSON.stringify(criteria),
+    JSON.stringify({ by: b.criteria ? 'manual' : 'example' }), newKey());
   for (const m of members) {
     const email = (m.notion_email || '').trim().toLowerCase() || null;
     if (email && !/^[^\s@%_]+@[^\s@%_]+\.[^\s@%_]+$/.test(email)) fail(400, 'Notion 이메일 형식을 확인해 주세요.');
@@ -165,13 +175,29 @@ const routes = [
     return teamView(id, a);
   }],
 
-  // 가중치는 교수만 설정
-  ['PUT', /^\/api\/teams\/([\w-]+)\/weights$/, async ([id], b, ctx) => {
+  // 생성형 AI: 교수가 원래 쓰던 평가기준(자유 서술) → 기록으로 확인할 수 있는 기준 항목 초안. 저장하지 않고 돌려준다
+  ['POST', /^\/api\/teams\/([\w-]+)\/criteria\/draft$/, async ([id], b, ctx) => {
     const a = profOnly(await authorize(ctx, id));
     if (a.t.locked_at) fail(409, '이미 잠긴 기준은 변경할 수 없습니다.');
-    validateWeights(b.weights);
-    await run('UPDATE teams SET weights = ? WHERE id = ?', JSON.stringify(b.weights), id);
-    await run('UPDATE members SET confirmed_at = NULL WHERE team_id = ?', id); // 기준이 바뀌면 학생 재확인
+    const rubric = text(b.rubric, 4000, '평가기준');
+    const d = await draftCriteria(rubric);
+    if (!d.criteria.length) fail(422, hasAI() ? 'AI가 기준 항목을 만들지 못했습니다. 항목을 직접 입력해 주세요.' : "AI 키가 연결되지 않아 '항목 40%' 형식의 줄만 읽을 수 있습니다. 그 형식으로 쓰거나 항목을 직접 입력해 주세요.");
+    return d;
+  }],
+
+  // 기준 확정 (교수, 잠금 전). 기준이 바뀌면 학생이 다시 확인
+  ['PUT', /^\/api\/teams\/([\w-]+)\/criteria$/, async ([id], b, ctx) => {
+    const a = profOnly(await authorize(ctx, id));
+    if (a.t.locked_at) fail(409, '이미 잠긴 기준은 변경할 수 없습니다.');
+    const criteria = strictCriteria(b.criteria);
+    const meta = b.meta && typeof b.meta === 'object' ? {
+      by: ['ai', 'rule'].includes(b.meta.by) ? b.meta.by : 'manual',
+      prompt_version: optText(b.meta.prompt_version, 40), model: optText(b.meta.model, 40),
+      excluded: (Array.isArray(b.meta.excluded) ? b.meta.excluded : []).slice(0, 8).map(x => ({ text: String(x?.text || '').slice(0, 120), why: String(x?.why || '').slice(0, 160) })),
+      edited: !!b.meta.edited,
+    } : { by: 'manual' };
+    await saveCriteria(id, criteria, optText(b.rubric, 4000), meta);
+    await run('UPDATE members SET confirmed_at = NULL WHERE team_id = ?', id);
     return teamView(id, a);
   }],
 
@@ -201,7 +227,7 @@ const routes = [
     const a = profOnly(await authorize(ctx, id));
     if (a.t.locked_at) fail(409, '이미 잠겼습니다.');
     const ms = await all('SELECT * FROM members WHERE team_id = ?', id);
-    if (ms.some(m => !m.confirmed_at)) fail(409, '팀원 전원이 가중치를 확인해야 잠글 수 있습니다.');
+    if (ms.some(m => !m.confirmed_at)) fail(409, '팀원 전원이 평가기준을 확인해야 잠글 수 있습니다.');
     await run("UPDATE teams SET locked_at = datetime('now') WHERE id = ?", id);
     return teamView(id, a);
   }],
@@ -220,7 +246,7 @@ const routes = [
     if (!a.t.repo) fail(400, '연결된 GitHub 저장소가 없습니다.');
     const ms = await all('SELECT * FROM members WHERE team_id = ?', id);
     let added, ai;
-    try { ({ added, ai } = await ingestGitHub(id, a.t.repo, ms)); } catch (e) { fail(502, e.message); }
+    try { ({ added, ai } = await ingestGitHub(id, a.t.repo, ms, criteriaOf(a.t))); } catch (e) { fail(502, e.message); }
     await run("UPDATE teams SET collected_at = datetime('now') WHERE id = ?", id);
     const t2 = await teamView(id, a);
     return { added, ai, review: t2.needs_review, team: t2 };
@@ -235,9 +261,10 @@ const routes = [
     if (!await get('SELECT 1 FROM members WHERE id = ? AND team_id = ?', memberId ?? null, id)) fail(400, '팀원을 선택해 주세요.');
     if (b.url && !/^https?:\/\//.test(b.url)) fail(400, '링크는 http(s)로 시작해야 합니다.');
     const item = { tool: text(b.tool, 20, '도구'), kind: text(b.kind || '문서 작성', 20, '활동 종류'), title: text(b.title, 200, '제목'), body: optText(b.body, 4000) || '' };
-    const [c] = Number.isInteger(b.type) && b.type >= 0 && b.type < AXES.length
-      ? [{ type: b.type, reason: '작성자가 직접 선택한 축입니다.', by: 'manual' }]
-      : await classify([item]);
+    const criteria = criteriaOf(a.t);
+    const [c] = Number.isInteger(b.type) && b.type >= 0 && b.type < criteria.length
+      ? [{ type: b.type, reason: `작성자가 직접 '${criteria[b.type].name}' 기준을 선택했습니다.`, by: 'manual' }]
+      : await classify([item], criteria);
     // AI 사용은 작성자가 직접 밝힘 (예: "ChatGPT로 문장 다듬기"). 기여율에는 영향 없음
     const aiUse = optText(b.ai_use, 200);
     const auto = detectAI(item);
@@ -256,12 +283,15 @@ const routes = [
   }],
 
   ['PATCH', /^\/api\/teams\/([\w-]+)\/records\/(\d+)$/, async ([id, rid], b, ctx) => {
-    profOnly(await authorize(ctx, id));
+    const a = profOnly(await authorize(ctx, id));
     const r = await get('SELECT * FROM records WHERE id = ? AND team_id = ?', rid, id) || fail(404, '기록이 없습니다.');
+    const names = criteriaOf(a.t).map(c => c.name);
     if (b.type !== undefined) {
-      if (!Number.isInteger(b.type) || b.type < 0 || b.type >= AXES.length) fail(400, '축이 올바르지 않습니다.');
+      // null = 기준 밖 (점수에서 제외)
+      if (b.type !== null && (!Number.isInteger(b.type) || b.type < 0 || b.type >= names.length)) fail(400, '기준 항목이 올바르지 않습니다.');
+      const nm = t => (t == null ? '기준 밖' : names[t] ?? '기준 밖');
       // 축을 그대로 두고 저장해도 '교수 확인'으로 남겨 확인 필요 목록에서 빠지게 함. 원래 AI 판단 근거는 이어서 보존
-      const reason = b.type === r.type ? `교수가 원자료를 확인하고 분류를 유지했습니다. (원래 근거: ${r.reason})` : `교수가 원자료를 확인하고 축을 ${AXES[r.type] ?? '미분류'} → ${AXES[b.type]}(으)로 조정했습니다.`;
+      const reason = b.type === r.type ? `교수가 원자료를 확인하고 분류를 유지했습니다. (원래 근거: ${r.reason})` : `교수가 원자료를 확인하고 '${nm(r.type)}' → '${nm(b.type)}'(으)로 조정했습니다.`;
       if (r.classified_by !== 'professor' || b.type !== r.type) await run("UPDATE records SET type = ?, reason = ?, classified_by = 'professor' WHERE id = ?", b.type, reason.slice(0, 600), r.id);
     }
     if (b.member_id !== undefined) {
@@ -317,7 +347,7 @@ const routes = [
     if (prev && JSON.parse(prev.sentences).some(x => x.objection)) fail(409, '학생 이의가 남아 있는 요약은 다시 만들 수 없습니다. 이의를 먼저 확인해 주세요.');
     const records = await all('SELECT * FROM records WHERE team_id = ? AND member_id = ? ORDER BY date', id, m.id);
     if (!records.length) fail(409, '연결된 작업 기록이 없어 요약할 수 없습니다. 자기 기술과 동료평가로 확인해 주세요.');
-    const g = await summarize(m, records);
+    const g = await summarize(m, records, criteriaOf(a.t).map(c => c.name));
     await run('INSERT OR REPLACE INTO summaries (team_id, member_id, sentences, dropped, generated, by, prompt_version) VALUES (?,?,?,?,?,?,?)',
       id, m.id, JSON.stringify(g.kept), JSON.stringify(g.dropped), g.generated, g.by, g.prompt_version);
     return teamView(id, a);
@@ -343,7 +373,7 @@ const routes = [
     if (await get('SELECT 1 FROM statements WHERE team_id = ? AND member_id = ?', id, a.me.id)) fail(409, '이미 자기 기술을 제출했습니다.');
     const records = await all('SELECT * FROM records WHERE team_id = ? AND member_id = ? ORDER BY date', id, a.me.id);
     if (!records.length) fail(409, '연결된 작업 기록이 없어 초안을 만들 수 없습니다. 직접 작성해 주세요.');
-    const g = await draftStatement(a.me, records);
+    const g = await draftStatement(a.me, records, criteriaOf(a.t).map(c => c.name));
     if (!g.kept.length) fail(422, '근거 확인을 통과한 문장이 없어 초안을 만들지 못했습니다. 직접 작성해 주세요.');
     await run('INSERT OR REPLACE INTO drafts (team_id, member_id, text, sentences, dropped, generated, by, prompt_version) VALUES (?,?,?,?,?,?,?,?)',
       id, a.me.id, draftText(g.kept, records), JSON.stringify(g.kept), JSON.stringify(g.dropped), g.generated, g.by, g.prompt_version);
@@ -360,7 +390,7 @@ const routes = [
     if (items.length !== targets.length || !targets.every(t => items.some(i => i.target_id === t))) fail(400, '모든 팀원에 대해 작성해 주세요.');
     const rows = [];
     for (const i of items) {
-      if (!Number.isInteger(i.axis) || i.axis < 0 || i.axis >= AXES.length) fail(400, '기여 축을 선택해 주세요.');
+      if (!Number.isInteger(i.axis) || i.axis < 0 || i.axis >= criteriaOf(a.t).length) fail(400, '기준 항목을 선택해 주세요.');
       if (!BASIS.includes(i.basis)) fail(400, '근거를 선택해 주세요.');
       const unseen = i.basis === '관찰 못 함';
       const did = unseen ? optText(i.did, 800) : text(i.did, 800, '무엇을 했는지');
@@ -392,20 +422,15 @@ export async function handleNotionEvent(ev) {
   const members = await all('SELECT * FROM members WHERE team_id = ?', team.id);
   const day = new Date(new Date(ev.timestamp).getTime() + 9 * 3600e3).toISOString().slice(0, 10);
   for (const a of authors) {
-    const kind = KIND[ev.type];
-    // 회의록 등 관리 문서는 제목으로 '이끌기', 그 외에는 본인 페이지면 '만들기' · 남의 페이지면 '다듬기'
-    const lead = /회의록|회의|일정|계획|마일스톤|태스크|담당/.test(title);
-    const c = kind === '속성 편집' ? { type: 2, reason: '일정·담당·상태 등 속성 변경을 이끌기에 연결했습니다.' }
-      : kind === '댓글' ? { type: 1, reason: '문서에 남긴 검토 댓글을 다듬기에 연결했습니다.' }
-      : lead ? { type: 2, reason: '회의·일정 등 관리 문서 작성이라 이끌기에 연결했습니다.' }
-      : kind === '페이지 생성' || createdBy === a.id ? { type: 0, reason: '본인이 만든 페이지의 내용을 작성해 만들기에 연결했습니다.' }
-      : { type: 1, reason: '다른 팀원이 만든 페이지를 편집해 다듬기에 연결했습니다.' };
+    // 남이 만든 페이지 편집은 종류를 따로 둔다 (교수 기준에서 '검토·개선' 등으로 연결할 수 있게)
+    const kind = KIND[ev.type] === '문서 편집' && createdBy && createdBy !== a.id ? '남의 문서 편집' : KIND[ev.type];
+    const [c] = await classify([{ tool: 'Notion', kind, title, body: '' }], criteriaOf(team));
     const u = await userInfo(a.id);
     const member = u.email && members.find(m => m.notion_email === u.email);
     const blocks = ev.data?.updated_blocks?.length;
-    await run('INSERT OR IGNORE INTO records (team_id, member_id, login, ext_id, tool, kind, title, body, url, ref, date, type, reason, classified_by) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+    await run('INSERT OR IGNORE INTO records (team_id, member_id, login, ext_id, tool, kind, title, body, url, ref, date, type, reason, classified_by, rule_type, prompt_version) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
       team.id, member?.id ?? null, `${u.name} <${u.email || a.id}>`, `notion:${ev.type}:${pageId}:${a.id}:${day}`, 'Notion', kind, title,
-      blocks ? `블록 ${blocks}개 변경` : '', url, `Notion · ${day}`, ev.timestamp, c.type, c.reason, 'rule');
+      blocks ? `블록 ${blocks}개 변경` : '', url, `Notion · ${day}`, ev.timestamp, c.type, c.reason, c.by, c.rule_type ?? null, c.prompt_version ?? null);
   }
 }
 

@@ -318,3 +318,13 @@ dialog.modal.wide{width:min(1040px,calc(100% - 48px))}
 
 .flex.wrap{flex-wrap:wrap}
 .table-wrap.text td:last-child,.table-wrap.text th:last-child{text-align:left}
+.axis-badge.a3{background:#ac7a2d}.axis-badge.a4{background:#6b7385}.axis-badge.a5{background:#c0587e}
+.weight-segment:nth-child(6){background:#dcdcf3;color:#6b7385}
+.crit-list{display:grid;gap:12px}
+.crit-row{display:grid;gap:8px;padding:14px;border:1px solid #ebedf3;border-radius:10px;background:#fbfcfe}
+.crit-top{display:grid;grid-template-columns:26px 1fr 76px auto 34px;gap:8px;align-items:center}
+.crit-w{text-align:right}
+.kind-chips{display:flex;flex-wrap:wrap;gap:6px}
+.kind-chip{display:inline-flex;align-items:center;gap:4px;font-size:12px;color:#6b7385;padding:3px 8px;border:1px solid #ebedf3;border-radius:6px;background:#fff;cursor:pointer;margin:0!important;font-weight:500!important}
+.kind-chip input{margin:0}
+.kind-chip:has(input:checked){border-color:#a7bfff;background:#f2f6ff;color:var(--blue-dark)}
