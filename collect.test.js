@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { detectAI, ruleClassify, needsReview, normalizeCriteria, ruleCriteria } from './collect.js';
+import { detectAI, ruleClassify, needsReview, normalizeCriteria, ruleCriteria, splitUnobservable } from './collect.js';
+import { criteriaOf } from './handler.js';
 
 const C = [
   { name: '구현', desc: '', weight: 50, keywords: ['구현', 'feat'], kinds: ['Pull request'] },
@@ -39,4 +40,16 @@ test('기준 정리: AI 초안 가중치는 합 100으로 맞추고, 교수 확�
   assert.deepEqual(n[3].kinds, ['Issue']);
   assert.throws(() => normalizeCriteria([{ name: 'A', weight: 70 }], { strict: true }), /100/);
   assert.deepEqual(ruleCriteria('1. 코드 구현: 50%\n- 문서 작성 (30점)\n발표 태도').map(c => [c.name, c.weight]), [['코드 구현', 50], ['문서 작성', 30]]);
+});
+
+test('기록으로 확인할 수 없는 기준은 AI가 넣어도 서버가 제외', () => {
+  const { criteria, excluded } = splitUnobservable([{ name: '기능 구현', weight: 60 }, { name: '최종 발표 및 시연', weight: 20 }, { name: '품질 관리', weight: 20 }]);
+  assert.deepEqual(criteria.map(c => c.name), ['기능 구현', '품질 관리']);
+  assert.match(excluded[0].text, /발표/);
+});
+
+test('기준 도입 전(고정 3축) 팀도 옛 규칙으로 계속 분류', () => {
+  const c = criteriaOf({ categories: JSON.stringify(['만들기', '다듬기', '이끌기']), weights: JSON.stringify([40, 35, 25]) });
+  assert.equal(ruleClassify({ kind: 'Commit', title: 'fix: 오류' }, c).type, 1);
+  assert.equal(ruleClassify({ kind: 'Issue', title: '로그인' }, c).type, 2);
 });

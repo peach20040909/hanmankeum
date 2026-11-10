@@ -10,6 +10,13 @@ import { askJSON, hasAI, MODEL } from './ai.js';
 export const KINDS = ['Commit', 'Pull request', '코드 리뷰', '리뷰 댓글', 'Issue', '페이지 생성', '문서 편집', '남의 문서 편집', '속성 편집', '댓글', '문서 작성'];
 
 // 교수가 기준을 넣기 전 보여주는 예시 (착수 설정에서 교수 기준으로 바꾼다)
+// 교수 기준 도입 전에 만들어진 팀(고정 3축)의 기록을 계속 분류할 수 있게 옛 규칙을 기준 형태로 둔다
+export const LEGACY_MRL = [
+  { name: '만들기', desc: '새 결과물을 만듦 — 신규 커밋, 새 문서·페이지, 새 슬라이드', keywords: ['구현', '추가', '작성', 'feat', 'add'], kinds: ['페이지 생성'] },
+  { name: '다듬기', desc: '기존 결과물을 고치거나 검토 — 남의 문서 편집, PR 리뷰·리뷰 댓글, 버그 수정', keywords: ['fix', 'bug', 'refactor', 'typo', '수정', '개선', '보완', '리팩', '오타', '정리', '검토'], kinds: ['코드 리뷰', '리뷰 댓글', '댓글', '남의 문서 편집'] },
+  { name: '이끌기', desc: '기록에 남는 관리 — 이슈·태스크 생성과 배정, 마일스톤, 회의록 작성', keywords: ['chore', 'ci', 'config', 'release', 'deploy', '회의록', '회의', '일정', '배분', '담당', '마일스톤', '계획', '배포', '설정'], kinds: ['Issue', '속성 편집'] },
+];
+
 export const EXAMPLE_CRITERIA = [
   { name: '구현·작성', desc: '새 기능·문서·자료를 만든 작업', weight: 40, keywords: ['구현', '추가', '작성', 'feat', 'add'], kinds: ['Pull request', '페이지 생성'] },
   { name: '검토·개선', desc: '기존 결과물을 고치거나 검토한 작업', weight: 35, keywords: ['수정', '개선', '리뷰', 'fix', 'refactor'], kinds: ['코드 리뷰', '리뷰 댓글', '댓글', '남의 문서 편집'] },
@@ -146,17 +153,28 @@ const criteriaSchema = {
   },
 };
 
-const CRITERIA_SYSTEM = `대학 교수가 팀 프로젝트에 원래 쓰던 평가기준을 읽고, 협업 도구(GitHub·Notion) 작업 기록으로 확인할 수 있는 기여 항목으로 정리합니다.
+const criteriaSystem = v => `대학 교수가 팀 프로젝트에 원래 쓰던 평가기준을 읽고, 협업 도구(GitHub·Notion) 작업 기록으로 확인할 수 있는 기여 항목으로 정리합니다.
 규칙:
 - 교수가 쓴 항목 이름과 표현을 최대한 그대로 씁니다. 새 이론이나 틀을 만들지 않습니다.
 - 교수가 비율을 적었으면 그 비율을 weight로 옮기고, 없으면 비슷하게 나눕니다. 합계는 100입니다.
 - 항목은 2~6개. desc는 어떤 작업 기록이 이 항목에 해당하는지 한 문장으로 씁니다.
-- keywords는 이 항목의 작업 기록 제목에 실제로 나올 법한 짧은 단어(한국어·영어)를 3~8개 씁니다. PR·merge·commit처럼 모든 기록에 공통으로 나오는 말과, 특정 기능 이름(로그인 등)은 쓰지 않습니다.
+- keywords는 이 항목의 작업 기록 제목에 실제로 나올 법한 짧은 단어(한국어·영어)를 3~8개 씁니다.${v >= 2 ? ' PR·merge·commit처럼 모든 기록에 공통으로 나오는 말과, 특정 기능 이름(로그인 등)은 쓰지 않습니다.' : ''}
 - kinds는 이 항목에만 뚜렷하게 해당하는 활동 종류를 주어진 목록에서만 고릅니다. Commit·문서 편집처럼 여러 항목에 걸치는 종류는 넣지 않습니다. 해당이 없으면 빈 배열입니다.
 - 작업 기록으로 확인할 수 없는 기준(발표 태도, 최종 결과물 품질, 출석, 오프라인 회의 참여 등)은 criteria에 넣지 말고 excluded에 원문과 이유를 적습니다. 이런 부분은 자기 기술·동료평가·교수 직접 평가로 확인합니다.
 - 한국어로 씁니다.
 
 활동 종류 목록: ${KINDS.join(', ')}`;
+
+// 작업 기록으로 확인할 수 없는 기준 (AI가 넣었든 규칙이 읽었든 서버가 한 번 더 걸러 '제외'로 돌린다)
+const UNOBSERVABLE = /발표|출석|태도|시연|참여도|오프라인|동료\s*평가|완성도|결과물\s*(의\s*)?품질|보고서\s*(의\s*)?품질/;
+export function splitUnobservable(criteria, excluded = []) {
+  const keep = [], out = [...excluded];
+  for (const c of criteria) {
+    if (UNOBSERVABLE.test(c.name)) out.push({ text: `${c.name} ${c.weight}%`, why: '작업 기록으로 확인할 수 없는 기준으로 보여 서버가 제외했습니다. 필요하면 교수님이 항목을 다시 추가할 수 있습니다.' });
+    else keep.push(c);
+  }
+  return { criteria: keep, excluded: out };
+}
 
 // AI를 쓸 수 없을 때: "항목 40%" 형태의 줄만 읽어 초안을 만든다 (키워드는 항목 이름의 단어)
 export function ruleCriteria(rubric) {
@@ -171,20 +189,24 @@ export function ruleCriteria(rubric) {
   return items;
 }
 
-export async function draftCriteria(rubric) {
+// version: 같은 입력으로 프롬프트 버전을 비교할 때만 지정 (기본은 최신)
+export async function draftCriteria(rubric, version = CRITERIA_VERSION) {
+  const v = Number(String(version).match(/v(\d+)$/)?.[1]) || 2;
+  const pv = `criteria-draft-v${v}`;
   if (hasAI()) {
     try {
-      const out = await askJSON({ system: CRITERIA_SYSTEM, user: `교수의 평가기준:\n${rubric}`, schema: criteriaSchema, maxTokens: 3000 });
-      const criteria = normalizeCriteria(out.criteria);
-      if (criteria.length) {
-        return { criteria, excluded: (out.excluded || []).slice(0, 8).map(x => ({ text: String(x.text).slice(0, 120), why: String(x.why).slice(0, 160) })), by: 'ai', prompt_version: CRITERIA_VERSION, model: MODEL };
-      }
+      const out = await askJSON({ system: criteriaSystem(v), user: `교수의 평가기준:\n${rubric}`, schema: criteriaSchema, maxTokens: 3000 });
+      const ex = (out.excluded || []).slice(0, 8).map(x => ({ text: String(x.text).slice(0, 120), why: String(x.why).slice(0, 160) }));
+      const raw = (out.criteria || []).map(c => ({ ...c, weight: Math.round(Number(c.weight) || 0) }));
+      const split = splitUnobservable(raw, ex);
+      const criteria = normalizeCriteria(split.criteria);
+      if (criteria.length) return { criteria, excluded: split.excluded, by: 'ai', prompt_version: pv, model: MODEL, raw_criteria: raw };
     } catch (e) {
       console.warn('기준 정리 AI 실패, 규칙으로 대체:', e.message);
     }
   }
-  const criteria = normalizeCriteria(ruleCriteria(rubric));
-  return { criteria, excluded: [], by: 'rule', prompt_version: null };
+  const split = splitUnobservable(ruleCriteria(rubric));
+  return { criteria: normalizeCriteria(split.criteria), excluded: split.excluded, by: 'rule', prompt_version: null };
 }
 
 // ── 기록 분류 ──────────────────────────────────────────────────────
