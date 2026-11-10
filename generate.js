@@ -104,18 +104,19 @@ async function generate(kind, member, records, names) {
   const firstPerson = kind === 'draft';
   const version = firstPerson ? DRAFT_VERSION : SUMMARY_VERSION;
   if (!records.length) return { kept: [], dropped: [], by: 'none', prompt_version: null, generated: 0 };
-  let raw = null, by = 'rule';
+  let raw = null, by = 'rule', aiError = null;
   if (hasAI()) {
     try {
       raw = await askSentences(firstPerson ? DRAFT_SYSTEM : SUMMARY_SYSTEM, `학생: ${member.name}${member.role ? ` (역할: ${member.role})` : ''}\n작업 기록:\n${recordLines(records, names)}`);
       by = 'ai';
     } catch (e) {
-      console.warn(`${kind} 생성 실패, 규칙 문장으로 대체:`, e.message);
+      aiError = String(e.message || e).slice(0, 200);
+      console.warn(`${kind} 생성 실패, 규칙 문장으로 대체:`, aiError);
     }
   }
   if (!raw) raw = ruleSentences(records, firstPerson, names);
   const { kept, dropped } = validateSentences(raw, records);
-  return { kept, dropped, by, prompt_version: by === 'ai' ? version : null, generated: raw.length };
+  return { kept, dropped, by, prompt_version: by === 'ai' ? version : null, generated: raw.length, ai_error: aiError };
 }
 
 export const summarize = (member, records, names) => generate('summary', member, records, names);

@@ -359,8 +359,8 @@ const routes = [
     const records = await all('SELECT * FROM records WHERE team_id = ? AND member_id = ? ORDER BY date', id, m.id);
     if (!records.length) fail(409, '연결된 작업 기록이 없어 요약할 수 없습니다. 자기 기술과 동료평가로 확인해 주세요.');
     const g = await summarize(m, records, criteriaOf(a.t).map(c => c.name));
-    await run('INSERT OR REPLACE INTO summaries (team_id, member_id, sentences, dropped, generated, by, prompt_version) VALUES (?,?,?,?,?,?,?)',
-      id, m.id, JSON.stringify(g.kept), JSON.stringify(g.dropped), g.generated, g.by, g.prompt_version);
+    await run('INSERT OR REPLACE INTO summaries (team_id, member_id, sentences, dropped, generated, by, prompt_version, ai_error) VALUES (?,?,?,?,?,?,?,?)',
+      id, m.id, JSON.stringify(g.kept), JSON.stringify(g.dropped), g.generated, g.by, g.prompt_version, g.ai_error);
     return teamView(id, a);
   }],
 
@@ -386,8 +386,8 @@ const routes = [
     if (!records.length) fail(409, '연결된 작업 기록이 없어 초안을 만들 수 없습니다. 직접 작성해 주세요.');
     const g = await draftStatement(a.me, records, criteriaOf(a.t).map(c => c.name));
     if (!g.kept.length) fail(422, '근거 확인을 통과한 문장이 없어 초안을 만들지 못했습니다. 직접 작성해 주세요.');
-    await run('INSERT OR REPLACE INTO drafts (team_id, member_id, text, sentences, dropped, generated, by, prompt_version) VALUES (?,?,?,?,?,?,?,?)',
-      id, a.me.id, draftText(g.kept, records), JSON.stringify(g.kept), JSON.stringify(g.dropped), g.generated, g.by, g.prompt_version);
+    await run('INSERT OR REPLACE INTO drafts (team_id, member_id, text, sentences, dropped, generated, by, prompt_version, ai_error) VALUES (?,?,?,?,?,?,?,?,?)',
+      id, a.me.id, draftText(g.kept, records), JSON.stringify(g.kept), JSON.stringify(g.dropped), g.generated, g.by, g.prompt_version, g.ai_error);
     return teamView(id, a);
   }],
 
