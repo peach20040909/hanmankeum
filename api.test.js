@@ -29,18 +29,24 @@ test('착수·권한·동료평가 흐름', async t => {
   assert.equal(sv.role, 'student');
   assert.ok(sv.members.every(m => !m.key) && !sv.prof_key);
 
+  // 예시 기준 그대로는 학생 확인·잠금 불가 (교수 확정 먼저)
+  assert.equal((await call(`/teams/${id}/confirm`, ka, 'POST')).status, 409);
+  assert.equal((await call(`/teams/${id}/lock`, P, 'POST')).status, 409);
+
   // 교수 평가기준: 초안은 교수만 (AI 키가 없으면 '항목 40%' 줄을 읽는 규칙 초안)
-  const rubric = '요구사항 구현 60%\n회의록·일정 관리 40%\n발표는 별도 평가';
+  const rubric = '요구사항 구현 60%\n회의록·일정 관리 40%\n발표 태도 20%';
   assert.equal((await call(`/teams/${id}/criteria/draft`, ka, 'POST', { rubric })).status, 403);
   const dr = (await call(`/teams/${id}/criteria/draft`, P, 'POST', { rubric })).data;
   assert.deepEqual(dr.criteria.map(c => [c.name, c.weight]), [['요구사항 구현', 60], ['회의록·일정 관리', 40]]);
   assert.equal(dr.by, 'rule');
+  assert.deepEqual(dr.excluded.map(x => x.text), ['발표 태도 20%']); // 기록으로 확인할 수 없는 기준은 규칙 초안에서도 제외
   // 확정: 교수만, 합 100, 이름 중복 거부
   const crit = [{ name: '구현', weight: 60, keywords: ['구현'] }, { name: '관리', weight: 40, keywords: ['회의', '일정'] }];
   assert.equal((await call(`/teams/${id}/criteria`, ka, 'PUT', { criteria: crit })).status, 403);
   assert.equal((await call(`/teams/${id}/criteria`, P, 'PUT', { criteria: [{ ...crit[0], weight: 50 }, crit[1]] })).status, 400);
   assert.equal((await call(`/teams/${id}/criteria`, P, 'PUT', { criteria: [crit[0], { ...crit[1], name: '구현' }] })).status, 400);
-  const saved0 = (await call(`/teams/${id}/criteria`, P, 'PUT', { criteria: crit, rubric, meta: { by: 'rule' } })).data;
+  const saved0 = (await call(`/teams/${id}/criteria`, P, 'PUT', { criteria: crit, rubric, meta: { by: 'rule', excluded: [{ text: '관리 10%', why: 'x' }, { text: '발표 태도 20%', why: 'y' }] } })).data;
+  assert.deepEqual(saved0.criteria_meta.excluded.map(x => x.text), ['발표 태도 20%']); // 교수가 항목으로 넣은 기준은 제외 목록에서 빠짐
   assert.deepEqual(saved0.categories, ['구현', '관리']);
   assert.equal(saved0.rubric, rubric);
   await call(`/teams/${id}/opinions`, ka, 'POST', { text: '개선 비중을 높여 주세요' });
@@ -120,7 +126,10 @@ test('AI 리터러시: 확인 필요 · AI 도움 표시', async t => {
   const r0 = flagged[0];
   const saved = (await c2(`/teams/${id}/records/${r0.id}`, P, 'PATCH', { type: r0.type })).data;
   assert.equal(saved.classified_by, 'professor');
-  assert.ok(saved.reason.includes(r0.reason));
+  assert.equal(saved.orig_reason, r0.reason); // AI 원래 근거는 덮어쓰지 않고 따로 보관
+  assert.equal(saved.orig_type, r0.type);
+  const moved = (await c2(`/teams/${id}/records/${r0.id}`, P, 'PATCH', { type: (r0.type + 1) % 4 })).data;
+  assert.equal(moved.orig_reason, r0.reason); // 두 번째 조정에도 원래 판단 유지
   assert.equal((await c2(`/teams/${id}`, P)).data.needs_review, 1);
 
   // 학생 화면에는 확인 필요 개수를 내보내지 않음

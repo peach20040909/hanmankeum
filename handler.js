@@ -4,7 +4,7 @@
 import { randomUUID } from 'node:crypto';
 import { init, get, all, run, newKey } from './db.js';
 import { computeScores } from './score.js';
-import { ingestGitHub, classify, detectAI, needsReview, normalizeCriteria, draftCriteria, EXAMPLE_CRITERIA, KINDS } from './collect.js';
+import { ingestGitHub, classify, detectAI, needsReview, normalizeCriteria, draftCriteria, EXAMPLE_CRITERIA, LEGACY_MRL, KINDS } from './collect.js';
 import { hasAI, MODEL } from './ai.js';
 import { seedDemo } from './seed.js';
 import { summarize, draftStatement, draftText, compareDraft } from './generate.js';
@@ -32,8 +32,13 @@ const optText = (v, max) => (typeof v === 'string' && v.trim() ? v.trim().slice(
 export function criteriaOf(t) {
   if (t.criteria) return JSON.parse(t.criteria);
   const names = JSON.parse(t.categories), ws = JSON.parse(t.weights);
-  return names.map((name, i) => ({ name, desc: '', weight: ws[i] ?? 0, keywords: [], kinds: [] }));
+  return names.map((name, i) => {
+    const legacy = LEGACY_MRL.find(c => c.name === name); // 고정 3축 시절 팀은 옛 규칙을 그대로 쓴다
+    return { name, desc: legacy?.desc || '', weight: ws[i] ?? 0, keywords: legacy?.keywords || [], kinds: legacy?.kinds || [] };
+  });
 }
+// 예시 기준으로 만든 팀은 교수가 기준을 확정하기 전까지 학생 확인·잠금 불가 (기준 도입 전 팀은 이미 확정된 것으로 본다)
+const criteriaConfirmed = t => !t.criteria_meta || JSON.parse(t.criteria_meta).by !== 'example';
 function strictCriteria(list) {
   try { return normalizeCriteria(list, { strict: true }); } catch (e) { fail(e.status || 400, e.message); }
 }
@@ -180,7 +185,7 @@ const routes = [
     const a = profOnly(await authorize(ctx, id));
     if (a.t.locked_at) fail(409, '이미 잠긴 기준은 변경할 수 없습니다.');
     const rubric = text(b.rubric, 4000, '평가기준');
-    const d = await draftCriteria(rubric);
+    const d = await draftCriteria(rubric, ['criteria-draft-v1', 'criteria-draft-v2'].includes(b.prompt_version) ? b.prompt_version : undefined);
     if (!d.criteria.length) fail(422, hasAI() ? 'AI가 기준 항목을 만들지 못했습니다. 항목을 직접 입력해 주세요.' : "AI 키가 연결되지 않아 '항목 40%' 형식의 줄만 읽을 수 있습니다. 그 형식으로 쓰거나 항목을 직접 입력해 주세요.");
     return d;
   }],
@@ -196,6 +201,8 @@ const routes = [
       excluded: (Array.isArray(b.meta.excluded) ? b.meta.excluded : []).slice(0, 8).map(x => ({ text: String(x?.text || '').slice(0, 120), why: String(x?.why || '').slice(0, 160) })),
       edited: !!b.meta.edited,
     } : { by: 'manual' };
+    // 교수가 제외 목록에 있던 기준을 항목으로 다시 넣었으면 제외 목록에서 뺀다 (화면에 양쪽으로 동시에 보이지 않게)
+    if (meta.excluded) meta.excluded = meta.excluded.filter(x => !criteria.some(c => x.text.includes(c.name)));
     await saveCriteria(id, criteria, optText(b.rubric, 4000), meta);
     await run('UPDATE members SET confirmed_at = NULL WHERE team_id = ?', id);
     return teamView(id, a);
@@ -204,6 +211,7 @@ const routes = [
   ['POST', /^\/api\/teams\/([\w-]+)\/confirm$/, async ([id], _, ctx) => {
     const a = studentOnly(await authorize(ctx, id));
     if (a.t.locked_at) fail(409, '이미 잠겼습니다.');
+    if (!criteriaConfirmed(a.t)) fail(409, '교수님이 아직 평가기준을 확정하지 않았습니다.');
     await run("UPDATE members SET confirmed_at = datetime('now') WHERE id = ?", a.me.id);
     return teamView(id, a);
   }],
@@ -227,6 +235,7 @@ const routes = [
     const a = profOnly(await authorize(ctx, id));
     if (a.t.locked_at) fail(409, '이미 잠겼습니다.');
     const ms = await all('SELECT * FROM members WHERE team_id = ?', id);
+    if (!criteriaConfirmed(a.t)) fail(409, '예시 기준 그대로는 잠글 수 없습니다. 교수님 평가기준을 입력해 확정해 주세요.');
     if (ms.some(m => !m.confirmed_at)) fail(409, '팀원 전원이 평가기준을 확인해야 잠글 수 있습니다.');
     await run("UPDATE teams SET locked_at = datetime('now') WHERE id = ?", id);
     return teamView(id, a);
@@ -291,8 +300,10 @@ const routes = [
       if (b.type !== null && (!Number.isInteger(b.type) || b.type < 0 || b.type >= names.length)) fail(400, '기준 항목이 올바르지 않습니다.');
       const nm = t => (t == null ? '기준 밖' : names[t] ?? '기준 밖');
       // 축을 그대로 두고 저장해도 '교수 확인'으로 남겨 확인 필요 목록에서 빠지게 함. 원래 AI 판단 근거는 이어서 보존
-      const reason = b.type === r.type ? `교수가 원자료를 확인하고 분류를 유지했습니다. (원래 근거: ${r.reason})` : `교수가 원자료를 확인하고 '${nm(r.type)}' → '${nm(b.type)}'(으)로 조정했습니다.`;
-      if (r.classified_by !== 'professor' || b.type !== r.type) await run("UPDATE records SET type = ?, reason = ?, classified_by = 'professor' WHERE id = ?", b.type, reason.slice(0, 600), r.id);
+      // 원래 판단(AI·규칙의 분류와 근거)은 처음 교수가 손댈 때 한 번만 따로 보관해 덮어쓰지 않는다
+      if (r.classified_by !== 'professor') await run('UPDATE records SET orig_type = ?, orig_reason = ?, orig_by = ? WHERE id = ?', r.type, r.reason, r.classified_by, r.id);
+      const reason = b.type === r.type ? '교수가 원자료를 확인하고 분류를 유지했습니다.' : `교수가 원자료를 확인하고 '${nm(r.type)}' → '${nm(b.type)}'(으)로 조정했습니다.`;
+      if (r.classified_by !== 'professor' || b.type !== r.type) await run("UPDATE records SET type = ?, reason = ?, classified_by = 'professor' WHERE id = ?", b.type, reason, r.id);
     }
     if (b.member_id !== undefined) {
       if (b.member_id !== null && !await get('SELECT 1 FROM members WHERE id = ? AND team_id = ?', b.member_id, id)) fail(400, '팀원이 올바르지 않습니다.');
