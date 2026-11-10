@@ -20,8 +20,8 @@ test('착수·권한·동료평가 흐름', async t => {
 
   const { data: c } = await call('/teams', null, 'POST', { course: 'c', name: 'n', project: 'p', deadline: '2099-12-31', members: [{ name: 'A' }, { name: 'B' }] });
   const id = c.team.id, P = c.prof_key, [ka, kb] = c.team.members.map(m => m.key);
-  assert.deepEqual(c.team.weights, [40, 35, 25]); // 균형 기본값
-  assert.deepEqual(c.team.categories, ['만들기', '다듬기', '이끌기']);
+  assert.deepEqual(c.team.weights, [40, 35, 25]); // 예시 기준으로 시작
+  assert.equal(c.team.criteria_meta.by, 'example');
 
   // 권한: 키 없음 거부, 학생은 다른 팀원 키를 못 봄
   assert.equal((await call(`/teams/${id}`)).status, 403);
@@ -29,10 +29,20 @@ test('착수·권한·동료평가 흐름', async t => {
   assert.equal(sv.role, 'student');
   assert.ok(sv.members.every(m => !m.key) && !sv.prof_key);
 
-  // 가중치: 교수만, 합 100
-  assert.equal((await call(`/teams/${id}/weights`, ka, 'PUT', { weights: [50, 30, 20] })).status, 403);
-  assert.equal((await call(`/teams/${id}/weights`, P, 'PUT', { weights: [50, 30, 10] })).status, 400);
-  assert.equal((await call(`/teams/${id}/weights`, P, 'PUT', { weights: [50, 30, 20] })).status, 200);
+  // 교수 평가기준: 초안은 교수만 (AI 키가 없으면 '항목 40%' 줄을 읽는 규칙 초안)
+  const rubric = '요구사항 구현 60%\n회의록·일정 관리 40%\n발표는 별도 평가';
+  assert.equal((await call(`/teams/${id}/criteria/draft`, ka, 'POST', { rubric })).status, 403);
+  const dr = (await call(`/teams/${id}/criteria/draft`, P, 'POST', { rubric })).data;
+  assert.deepEqual(dr.criteria.map(c => [c.name, c.weight]), [['요구사항 구현', 60], ['회의록·일정 관리', 40]]);
+  assert.equal(dr.by, 'rule');
+  // 확정: 교수만, 합 100, 이름 중복 거부
+  const crit = [{ name: '구현', weight: 60, keywords: ['구현'] }, { name: '관리', weight: 40, keywords: ['회의', '일정'] }];
+  assert.equal((await call(`/teams/${id}/criteria`, ka, 'PUT', { criteria: crit })).status, 403);
+  assert.equal((await call(`/teams/${id}/criteria`, P, 'PUT', { criteria: [{ ...crit[0], weight: 50 }, crit[1]] })).status, 400);
+  assert.equal((await call(`/teams/${id}/criteria`, P, 'PUT', { criteria: [crit[0], { ...crit[1], name: '구현' }] })).status, 400);
+  const saved0 = (await call(`/teams/${id}/criteria`, P, 'PUT', { criteria: crit, rubric, meta: { by: 'rule' } })).data;
+  assert.deepEqual(saved0.categories, ['구현', '관리']);
+  assert.equal(saved0.rubric, rubric);
   await call(`/teams/${id}/opinions`, ka, 'POST', { text: '개선 비중을 높여 주세요' });
   const op = (await call(`/teams/${id}`, P)).data.opinions[0];
   assert.equal((await call(`/teams/${id}/opinions/${op.id}`, ka, 'PATCH', { status: 'accepted' })).status, 403);
@@ -49,13 +59,13 @@ test('착수·권한·동료평가 흐름', async t => {
   // 학기 중: 리포트·기록·동료평가 닫힘
   assert.equal((await call(`/teams/${id}/report`, P)).status, 403);
   assert.equal((await call(`/teams/${id}/records`, ka)).status, 403);
-  await call(`/teams/${id}/records`, ka, 'POST', { tool: 'Docs', title: '요구사항 정의서 작성' });
+  await call(`/teams/${id}/records`, ka, 'POST', { tool: 'Docs', title: '요구사항 정의서 작성' }); await call(`/teams/${id}/records`, ka, 'POST', { tool: 'Docs', title: '로그인 화면 구현' });
   assert.equal((await call(`/teams/${id}/peer-reviews`, ka, 'POST', { items: [] })).status, 409);
 
   // 마감 후: 동료평가 1회, 리포트는 교수만
   await call(`/teams/${id}/close`, P, 'POST');
   const [ma, mb] = locked.members;
-  const item = { target_id: mb.id, axis: 2, did: '회의 일정을 잡았습니다', basis: '직접 관찰' };
+  const item = { target_id: mb.id, axis: 1, did: '회의 일정을 잡았습니다', basis: '직접 관찰' };
   assert.equal((await call(`/teams/${id}/peer-reviews`, ka, 'POST', { items: [{ ...item, did: '' }] })).status, 400);
   assert.equal((await call(`/teams/${id}/peer-reviews`, ka, 'POST', { items: [item] })).status, 200);
   assert.equal((await call(`/teams/${id}/peer-reviews`, ka, 'POST', { items: [item] })).status, 409);
@@ -100,8 +110,11 @@ test('AI 리터러시: 확인 필요 · AI 도움 표시', async t => {
   const marked = recs.filter(r => /Co-Authored-By:\s*Claude|Generated with \[Claude/i.test(r.body || ''));
   assert.equal(d.team.ai_assisted, marked.length);
   assert.ok(marked.length >= 2 && marked.length < recs.length);
-  const flagged = recs.filter(r => r.rule_type !== r.type);
-  assert.ok(flagged.every(r => r.prompt_version === 'mrl-3axis-v2'));
+  const flagged = recs.filter(r => r.rule_type != null && r.rule_type !== r.type);
+  assert.equal(flagged.length, 2);
+  assert.ok(flagged.every(r => r.prompt_version === 'criteria-classify-v1'));
+  assert.equal(d.team.criteria.length, 4);
+  assert.ok(d.team.criteria_meta.excluded.length >= 1, '기록으로 확인할 수 없는 기준은 따로 표시');
 
   // 교수가 축을 그대로 두고 저장해도 '확인 완료'로 빠짐, 원래 근거는 보존
   const r0 = flagged[0];

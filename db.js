@@ -60,7 +60,7 @@ const SCHEMA = [
 
 // 기존 DB에 뒤늦게 추가된 컬럼
 const COLUMNS = [
-  ['teams', 'notion_page'], ['teams', 'prof_key'], ['teams', 'demo', 'INTEGER NOT NULL DEFAULT 0'], ['members', 'notion_email'], ['members', 'key'],
+  ['teams', 'notion_page'], ['teams', 'prof_key'], ['teams', 'demo', 'INTEGER NOT NULL DEFAULT 0'], ['teams', 'criteria'], ['teams', 'criteria_meta'], ['teams', 'rubric'], ['members', 'notion_email'], ['members', 'key'],
   ['records', 'rule_type', 'INTEGER'], ['records', 'prompt_version'], ['records', 'ai_assisted', 'INTEGER NOT NULL DEFAULT 0'], ['records', 'ai_note'],
   ['statements', 'ai_draft'], ['statements', 'draft_checked', 'INTEGER NOT NULL DEFAULT 0'], ['statements', 'draft_diff'],
 ];

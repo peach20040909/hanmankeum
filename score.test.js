@@ -24,19 +24,17 @@ test('기록 없는 유형의 가중치는 재배분, 기록이 아예 없으면
   assert.equal(computeScores([{ id: 1 }], [], [100])[0].score, 0);
 });
 
-test('규칙 분류: MRL 3축 (0 만들기 · 1 다듬기 · 2 이끌기)', async () => {
-  const { ruleClassify } = await import('./collect.js');
-  const c = (kind, title, tool = 'GitHub') => ruleClassify({ kind, title, tool }).type;
+test('규칙 분류: 교수 기준의 활동 종류·키워드', async () => {
+  const { ruleClassify, EXAMPLE_CRITERIA } = await import('./collect.js');
+  const c = (kind, title, tool = 'GitHub') => ruleClassify({ kind, title, tool }, EXAMPLE_CRITERIA).type;
   assert.equal(c('Commit', '검색 화면 구현'), 0);
-  assert.equal(c('Pull request', '분실물 매칭 API 구현'), 0);
+  assert.equal(c('Pull request', '분실물 매칭 API'), 0);
   assert.equal(c('Commit', 'fix: 로그인 오류'), 1);
-  assert.equal(c('Commit', '오타 수정'), 1);
   assert.equal(c('코드 리뷰', '리뷰: 화면'), 1);
-  assert.equal(c('리뷰 댓글', '여기 조건 확인 필요해요'), 1);
   assert.equal(c('Issue', '로그인 기능'), 2);
   assert.equal(c('Commit', 'chore: CI 설정'), 2);
   assert.equal(c('문서 작성', '11/28 회의록', 'Notion'), 2);
-  assert.equal(c('Commit', 'prefix 추가'), 0); // 'fix'는 단어 단위로만
+  assert.equal(c('Commit', 'wip'), null); // 어떤 기준과도 맞지 않으면 기준 밖
 });
 
 test('Notion 서명 검증 · 페이지 링크 파싱', async () => {
