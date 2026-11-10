@@ -66,7 +66,7 @@ const sentenceSchema = {
 };
 
 async function askSentences(system, user) {
-  return (await askJSON({ system, user, schema: sentenceSchema, maxTokens: 3000 })).sentences;
+  return (await askJSON({ system, user, schema: sentenceSchema, maxTokens: 8000 })).sentences;
 }
 
 const SUMMARY_SYSTEM = `대학 팀 프로젝트에서 한 학생의 작업 기록을 읽고, 그 학생이 한 일을 3~5문장으로 요약합니다.
