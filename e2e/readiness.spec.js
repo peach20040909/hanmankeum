@@ -102,6 +102,69 @@ test('시연 리포트·활동·산식과 기록 조정·기준 밖 저장', asy
   await screenshot(page, info, 'record');
 });
 
+for (const view of ['evidence', 'report']) {
+  test(`분류 저장 후 즉시 재열기: 느린 목록 갱신에서도 최신 값 유지 (${view})`, async ({ page, request }, info) => {
+    const c = await call(request, '/demo', null, 'POST');
+    const id = c.team.id, p = c.prof_key;
+    await open(page, p, view);
+    if (view === 'report') {
+      await page.locator('.contribution-row').first().click();
+      await page.locator('#modal .evidence-item').first().click();
+    } else {
+      await page.locator('.evidence-item').first().click();
+    }
+    const save = page.locator('#modal [data-action=save-record]');
+    const rid = await save.getAttribute('data-id');
+    const original = (await call(request, `/teams/${id}/records`, p)).find(r => String(r.id) === rid);
+    const refreshPath = `/api/teams/${id}/${view === 'report' ? 'report' : 'records'}`;
+
+    // 네트워크 응답을 명시적인 gate로 잡아 두어 저장/목록 갱신 사이를 결정적으로 재현한다.
+    for (const type of [String((original.type + 1) % 4), '']) {
+      let release, arrived, finished, intercepted = false;
+      const gate = new Promise(resolve => { release = resolve; });
+      const requested = new Promise(resolve => { arrived = resolve; });
+      const completed = new Promise(resolve => { finished = resolve; });
+      const intercept = async route => {
+        intercepted = true;
+        try {
+          const response = await route.fetch();
+          arrived();
+          await gate;
+          await route.fulfill({ response });
+        } finally { finished(); }
+      };
+      await page.route(`**${refreshPath}`, intercept);
+      try {
+        await page.locator('#record-type').selectOption(type);
+        await page.locator('#record-member').selectOption(String(c.team.members[1].id));
+        const updated = page.waitForResponse(r => r.request().method() === 'PATCH' && r.url().endsWith(`/records/${rid}`));
+        await save.click();
+        expect((await updated).ok()).toBeTruthy();
+        // PATCH 성공뿐 아니라 실제 목록 GET이 시작됐는지 확인한 뒤 모달 상태를 검사한다.
+        await Promise.race([requested, page.waitForTimeout(10_000).then(() => { throw new Error('저장 후 목록 갱신 요청이 없습니다.'); })]);
+        await expect(page.locator('#modal')).toBeVisible();
+        release();
+        await expect(page.locator('#modal')).not.toBeVisible();
+      } finally {
+        release();
+        if (intercepted) await completed;
+        await page.unroute(`**${refreshPath}`, intercept);
+      }
+      // 닫히자마자 다시 연다. reload나 추가 대기로 오래된 모달을 숨기지 않는다.
+      const evidence = page.locator(`.evidence-item[data-id="${rid}"]`);
+      if (view === 'report') {
+        await page.locator(`.contribution-row[data-id="${c.team.members[1].id}"]`).click();
+      }
+      await evidence.click();
+      await expect(page.locator('#record-type')).toHaveValue(type);
+      await expect(page.locator('#record-member')).toHaveValue(String(c.team.members[1].id));
+      await expect(page.locator('#modal')).toContainText('교수 확인 전 원래 판단');
+      await expect(page.locator('#modal')).toContainText(original.reason);
+    }
+    await screenshot(page, info, `record-refresh-${view}`);
+  });
+}
+
 test('잘못된 임시 키: 요약·자기 기술 초안에 AI 호출 실패 배지', async ({ page, request }, info) => {
   const origin = 'http://127.0.0.1:4174';
   const c = await call(request, '/demo', null, 'POST', undefined, origin);
