@@ -77,7 +77,7 @@ async function teamView(teamId, a) {
     ...rest, ...(prof ? { prof_key } : {}),
     role: a.role, me_id: a.me?.id ?? null,
     tools: JSON.parse(t.tools), criteria: criteriaOf(t), categories: criteriaOf(t).map(c => c.name), weights: criteriaOf(t).map(c => c.weight),
-    criteria_meta: t.criteria_meta ? JSON.parse(t.criteria_meta) : null, kinds: KINDS, ai: { on: hasAI(), model: hasAI() ? MODEL : null }, closed: isClosed(t),
+    criteria_meta: !t.criteria ? { by: 'legacy' } : t.criteria_meta ? JSON.parse(t.criteria_meta) : null, kinds: KINDS, ai: { on: hasAI(), model: hasAI() ? MODEL : null }, closed: isClosed(t),
     members, statements, opinions, summaries, draft,
     accepted_opinions: (await get("SELECT count(*) n FROM opinions WHERE team_id = ? AND status = 'accepted'", teamId)).n,
     record_count: (await get('SELECT count(*) n FROM records WHERE team_id = ?', teamId)).n,

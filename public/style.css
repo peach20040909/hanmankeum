@@ -224,7 +224,7 @@ dialog.modal.wide{width:min(1040px,calc(100% - 48px))}
 /* 인쇄 전용 학생별 상세 — 교수가 성적을 매기고 학생에게 설명할 수 있는 분량 */
 .dossier{display:none}
 @media print{
-.dossier{display:block;break-before:page;break-inside:auto}.dossier:first-of-type{break-before:auto}.dossier-table .src{white-space:nowrap}.dossier-table .src a{color:#1e2434;border-bottom:.5px solid #b9c2d6;text-decoration:none}
+.dossier{display:block;break-before:page;break-inside:auto}.dossier-table .src{white-space:normal;overflow-wrap:anywhere}.dossier-table .src a{color:#1e2434;border-bottom:.5px solid #b9c2d6;text-decoration:none}
 .dossier-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;border-bottom:2px solid #dfe3ec;padding-bottom:10px;margin-bottom:14px}
 .dossier-head h2{font-size:20px}
 .dossier-head p{font-size:11px;color:#6b7385;margin-top:3px}
@@ -242,6 +242,10 @@ dialog.modal.wide{width:min(1040px,calc(100% - 48px))}
 .dossier-table .src{font-size:9px;color:#6b7385}
 .dossier-table tr{break-inside:avoid}
 .dossier-text{font-size:11px;line-height:1.85;color:#434b5e;border-left:2px solid #dfe3ec;padding:2px 0 2px 11px;margin-bottom:9px;break-inside:avoid}
+.dossier-statement{break-inside:auto;orphans:3;widows:3;break-after:avoid}
+.dossier-meta{break-before:avoid;break-inside:avoid}
+.dossier-last{break-after:avoid}
+.dossier-foot{break-before:avoid;break-inside:avoid}
 .dossier-meta,.dossier-foot{font-size:10px;color:#9aa1b2;margin-top:5px}
 .dossier-foot{margin-top:14px;border-top:1px solid #ebedf3;padding-top:7px}
 .dossier-empty{font-size:11px;color:#6b7385;padding:7px 0}
@@ -252,12 +256,24 @@ dialog.modal.wide{width:min(1040px,calc(100% - 48px))}
 .testimony-row .icon,.aux-arrow,.chart-legend span:last-child,.detail-section-title .button{display:none}
 .aux-card>summary{border-bottom:1px solid var(--line)}
 }
-/* 쪽을 넘겨 시작하는 블록은 스스로 윗여백을 갖는다.
-   body padding은 문서에 한 번만 붙어서 2쪽부터는 윗여백이 없었다.
-   (브라우저 인쇄 여백을 '없음'으로 둬도 답답하지 않게) */
+/* A4 여백은 @page 한 곳에서 정한다. 학생 블록마다 더하던 16mm는 제거한다.
+   화면 카드와 별도로 만든 요약 → 학생별 소명 → 확인 필요 순서로 출력한다. */
 @media print{
-.dossier{padding-top:16mm}
-.print-table{padding-top:12mm}
+body:has(.print-report){padding:0;font-size:11px;line-height:1.45}
+body:has(.print-report):before{display:none}
+body:has(.print-report) .page-heading,body:has(.print-report) .project-strip,body:has(.print-report) .demo-banner{display:none}
+.report-grid>.stack>.ai-work,.report-grid>.stack>.chart-card,.report-grid>.stack>.aux-card{display:none}
+.print-report{width:186mm}
+.print-page{break-before:page;break-inside:auto;margin:0;padding:0}
+.print-summary{break-before:auto}
+.print-summary .criteria-source{margin:10px 0;font-size:11px}
+.print-summary .weight-bar{margin:12px 0}
+.print-table{padding:0;margin-top:18px}
+.print-note{break-before:avoid;break-inside:avoid}
+.dossier-head,.dossier-calc{break-inside:avoid}
+.dossier-table thead{display:table-header-group}
+.dossier-table{break-inside:auto}
+.dossier-text{orphans:3;widows:3}
 }
 .side-foot p,.side-foot span{white-space:nowrap}
 .side-foot strong{color:#434b5e;font-weight:650}
