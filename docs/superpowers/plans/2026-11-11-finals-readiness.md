@@ -52,7 +52,7 @@
 - [x] style.css의 옛 용어 주석과 과거 설계 문서 안내 한 줄을 수정한다.
 - [x] README에 테스트/녹화 실행법·검증 경계를 기록한다.
 - [x] npm test, npm run e2e, git diff --check 및 프롬프트 무변경을 확인한다.
-- [ ] 독립 검토 후 커밋·push·PR 생성. main 머지는 하지 않는다.
+- [x] 독립 검토 후 커밋·push·PR 생성. main 머지는 하지 않는다.
 
 ## 실행 기록
 
@@ -63,3 +63,6 @@
 - 도구: CDP 연속 PNG 녹화, --check, 12장 슬라이드·정지 캡처 끝까지 실행. Python 5개 구문 검사와 6단계 패널 렌더 확인. 영상 인코딩은 실행하지 않음.
 - 실행 중 임시 키를 만들고 로컬 401 응답으로 실패 경로를 검증했다. GitHub 응답만 고정하며 수집·분류·저장은 실제 코드다. 실키·운영 DB·배포 환경변수는 사용하지 않았다.
 - collect.js, ai.js, generate.js, seed.js와 기존 테스트는 기준 커밋 대비 무변경.
+
+- 독립 코드 검토: 24개 변경 파일 검토, 수정 필요 지적 없음, npm test 별도 재실행 21/21 통과.
+- PR: https://github.com/peach20040909/hanmankeum/pull/10 (test/finals-readiness → main). main 머지·배포 환경변수 변경은 하지 않았다.
