@@ -10,13 +10,7 @@ W, H, PANEL, FPS = 1280, 720, 320, 30
 APP_W = W - PANEL
 CARD, FADE = 2.6, 0.45  # 단계 카드 시간 / 페이드
 
-STEPS = [
-    ("invite",  "팀 초대 · 도구 연결", "교수가 팀을 만들고 팀원에게 개인 초대 링크를 보냅니다.\n협업툴의 편집 기록만 연결합니다."),
-    ("weights", "MRL 가중치 잠금",    "만들기 · 다듬기 · 이끌기 비중을 교수가 정하고,\n결과를 모르는 지금 시점에 기준을 잠급니다."),
-    ("collect", "학기 중 기록 수집",  "학생 화면에는 알림도 점수도 없습니다.\n협업툴 기록만 조용히 쌓이고 3축으로 분류됩니다."),
-    ("peer",    "익명 동료평가",      "기록에 남지 않은 기여는 마감 후 익명 증언으로 보완합니다.\n점수를 매기지 않고, 무엇을 했는지만 적습니다."),
-    ("report",  "기여도 리포트",      "마감 후 한 번만 산출합니다.\n판정하지 않고 산식과 근거를 그대로 전달합니다."),
-]
+from panel import STEPS
 
 BD, RG = "C:/Windows/Fonts/malgunbd.ttf", "C:/Windows/Fonts/malgun.ttf"
 F_LOGO, F_SUB = ImageFont.truetype(BD, 26), ImageFont.truetype(RG, 13)
@@ -149,7 +143,7 @@ for i, (t0, t1) in enumerate(spans):
         idx = frames[j]["i"]
         if idx not in cache:
             cache.clear()
-            cache[idx] = Image.open(REC / f"f{idx:06d}.jpg").convert("RGB").resize((APP_W, H), Image.LANCZOS)
+            cache[idx] = Image.open(REC / f"f{idx:06d}.png").convert("RGB").resize((APP_W, H), Image.LANCZOS)
         out = Image.new("RGB", (W, H))
         out.paste(panel(i, (k + 1) / n), (0, 0))
         out.paste(cache[idx], (PANEL, 0))

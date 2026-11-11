@@ -417,26 +417,26 @@ const routes = [
 
 // Notion 웹훅 이벤트 → 팀 루트 페이지 하위인지 확인 → 편집자별 기록
 // 같은 페이지·같은 편집자·같은 날(KST)·같은 종류는 1건으로 합침 (반복 편집 부풀리기 완화)
-export async function handleNotionEvent(ev) {
+export async function handleNotionEvent(ev, notionAPI = { ancestors, pageInfo, userInfo }) {
   if (!KIND[ev.type]) return;
   const pageId = ev.entity?.type === 'page' ? ev.entity.id : ev.type === 'comment.created' ? ev.data?.page_id : null;
   if (!pageId) return;
   const teams = (await all('SELECT * FROM teams WHERE notion_page IS NOT NULL AND locked_at IS NOT NULL')).filter(t => !isClosed(t));
   if (!teams.length) return;
   if (!process.env.NOTION_TOKEN) return console.warn('[Notion] NOTION_TOKEN이 없어 이벤트를 처리하지 못했습니다.');
-  const chain = await ancestors(pageId);
+  const chain = await notionAPI.ancestors(pageId);
   const team = teams.find(t => chain.includes(t.notion_page));
   if (!team) return;
   const authors = (ev.authors || []).filter(a => a.type === 'person');
   if (!authors.length) return;
-  const { title, url, createdBy } = await pageInfo(pageId);
+  const { title, url, createdBy } = await notionAPI.pageInfo(pageId);
   const members = await all('SELECT * FROM members WHERE team_id = ?', team.id);
   const day = new Date(new Date(ev.timestamp).getTime() + 9 * 3600e3).toISOString().slice(0, 10);
   for (const a of authors) {
     // 남이 만든 페이지 편집은 종류를 따로 둔다 (교수 기준에서 '검토·개선' 등으로 연결할 수 있게)
     const kind = KIND[ev.type] === '문서 편집' && createdBy && createdBy !== a.id ? '남의 문서 편집' : KIND[ev.type];
     const [c] = await classify([{ tool: 'Notion', kind, title, body: '' }], criteriaOf(team));
-    const u = await userInfo(a.id);
+    const u = await notionAPI.userInfo(a.id);
     const member = u.email && members.find(m => m.notion_email === u.email);
     const blocks = ev.data?.updated_blocks?.length;
     await run('INSERT OR IGNORE INTO records (team_id, member_id, login, ext_id, tool, kind, title, body, url, ref, date, type, reason, classified_by, rule_type, prompt_version) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
