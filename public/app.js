@@ -626,7 +626,7 @@ document.addEventListener('click', e => {
     case 'save-record': run(async () => {
       const mv = $('#record-member').value;
       await api(`/teams/${t.id}/records/${id}`, { method: 'PATCH', body: { type: $('#record-type').value === '' ? null : Number($('#record-type').value), member_id: mv ? Number(mv) : null } });
-      closeModal(); await refreshTeam(); notify('교수 확인으로 저장했습니다.');
+      await refreshTeam(); closeModal(); notify('교수 확인으로 저장했습니다.');
     }); break;
     case 'summary': run(async () => {
       notify('근거 기록으로 요약을 만들고 검증하는 중입니다…');
