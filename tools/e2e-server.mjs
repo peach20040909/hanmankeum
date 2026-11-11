@@ -13,6 +13,7 @@ const dir = mkdtempSync(join(tmpdir(), 'hmk-e2e-'));
 process.env.DB_PATH = join(dir, 'test.db');
 process.env.PORT = process.env.PORT || (failure ? '4174' : '4173');
 if (process.argv.includes('--demo-fixtures')) {
+  await (await import('./print-fixtures.mjs')).printFixtures();
   // 시연 도구 점검에서만 GitHub 외부 응답을 고정한다. 수집 라우트·분류·저장은 실제 실행한다.
   const realFetch = globalThis.fetch;
   globalThis.fetch = async (input, options) => {
