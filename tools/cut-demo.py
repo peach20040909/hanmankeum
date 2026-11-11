@@ -13,27 +13,19 @@ APP_W, APP_H, APP_Y = 1344, 1008, 36           # 녹화 원본 크기 그대로 
 px = lambda v: int(v * S)
 BG, INK, DIM, ACC, LINE = (13, 17, 38), (255, 255, 255), (134, 143, 173), (91, 140, 255), (34, 41, 74)
 
-STEPS = [  # (키, 단계명, 설명)
-    ("invite",  "팀 초대 · 도구 연결", "교수가 팀을 만들고 팀원에게 개인 초대 링크를 보냅니다."),
-    ("weights", "MRL 가중치 잠금",    "만들기 · 다듬기 · 이끌기 비중을 정하고, 결과를 모르는 지금 잠급니다."),
-    ("collect", "기록 수집 · 자동 분류", "학기 중에는 알림도 점수도 없습니다. 기록이 3축으로 분류됩니다."),
-    ("peer",    "익명 동료평가",      "기록에 없는 기여는 마감 후 익명 증언으로 보완합니다."),
-    ("report",  "기여도 리포트",      "마감 후 최초 산출. 판정하지 않고 산식과 근거를 전달합니다."),
-]
+from panel import STEPS
 KEYS = [s[0] for s in STEPS]
 
 # 버전별 구간: (단계, 녹화 시작초, 길이초)
 VERSIONS = {
-    # 2026-11-01 재녹화 기준 (총 81.3s / invite 0.7 · weights 6.4 · collect 24.4 · peer 42.5 · report 54.6)
+    # timeline.json의 단계 시작점 사용. 예전 촬영의 절대 초 단위 위치를 재사용하지 않는다.
     "short": ("한만큼_시연_15초.mp4", False, [
-        ("weights", 14.0, 3.0), ("collect", 33.5, 3.2), ("peer", 47.0, 3.4), ("report", 56.0, 3.2), ("report", 70.0, 3.2),
+        ("criteria", None, 3), ("lock", None, 2.5), ("collect", None, 2.5),
+        ("review", None, 3), ("report", None, 4),
     ]),
     "core": ("한만큼_시연_40초.mp4", False, [
-        ("invite", 1.6, 3.8),
-        ("weights", 8.5, 5.0), ("weights", 19.5, 4.2),
-        ("collect", 26.0, 4.0), ("collect", 33.0, 4.6),
-        ("peer", 46.5, 6.2),
-        ("report", 55.8, 5.6), ("report", 63.5, 4.4), ("report", 71.5, 5.0),
+        ("invite", None, 3), ("criteria", None, 9), ("lock", None, 5),
+        ("collect", None, 6), ("review", None, 7), ("report", None, 10),
     ]),
     "full": ("한만큼_시연_전체.mp4", False, [(k, None, None) for k in KEYS]),
 }
@@ -137,7 +129,8 @@ def render(name, covers, cuts):
             push(Image.blend(black, img, (i + 1) / n))
 
     # 전체 길이(진행 막대용)
-    total = sum((span[k][1] - span[k][0]) if d is None else d for k, _, d in cuts)
+    cuts = [(k, span[k][0] if t is None else t, min(d if d is not None else span[k][1] - span[k][0], span[k][1] - (span[k][0] if t is None else t))) for k, t, d in cuts]
+    total = sum(d for _, _, d in cuts)
     done = 0.0
     cache = {}
     if covers:

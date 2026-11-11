@@ -9,3 +9,7 @@ node_modules/
 _*.mjs
 _*.py
 제출/
+tools/out/
+test-results/
+playwright-report/
+__pycache__/

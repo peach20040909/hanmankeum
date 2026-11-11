@@ -14,7 +14,7 @@ API 키 없이도 전부 동작합니다. AI 키가 없으면 규칙 기반으�
 ```bash
 git clone https://github.com/peach20040909/hanmankeum.git
 cd hanmankeum && npm install
-npm test        # 12개 통과 — 무엇을 검증하는지는 아래 '테스트' 참고
+npm test        # 기존 16개 + Notion 5개 — 아래 '테스트' 참고
 npm start       # http://localhost:3000
 ```
 
@@ -41,6 +41,23 @@ npm start       # http://localhost:3000
 | `score.test.js` | 가중치 × 항목 내 상대비율 합산, 기록이 없는 항목의 가중치 재배분(팀 합 100% 유지) |
 | `collect.test.js` | 교수 기준(키워드·활동 종류)으로 규칙 분류가 맞게 떨어지는지, '기준 밖' 처리, AI 기준 초안 정리·검증 |
 | `generate.test.js` | 근거 번호 검증(전부 없는 번호·근거 없음·평가 표현은 제외, 일부만 틀리면 유효한 근거만 남김), 근거-내용 연결이 약한 문장 표시, 초안 대비 수정률 |
+| `notion.test.js` | 가짜 외부 조회 + 실제 교수 기준 규칙 분류·DB 저장: 페이지 생성, 남의 문서 편집, 기준 밖, 분류 출처/버전, 중복·팀 범위, 틀린 웹훅 서명 거부 |
+
+### 화면과 시연 도구 자동 점검
+
+```bash
+npm ci
+npx playwright install chromium   # 호환 Chromium이 이미 설치돼 있으면 생략
+npm run e2e
+```
+
+`e2e/readiness.spec.js`는 데스크톱 1300px·모바일 390px에서 기준 입력·규칙 초안·항목 추가/삭제·합계 경고·확정·학생 확인·잠금, 시연 리포트·활동·산식 모달, 교수 조정의 원래 근거 보존과 기준 밖 저장을 검사합니다. 예시 기준 상태의 확인·잠금 비활성과 브라우저 콘솔 오류 0건도 확인합니다.
+
+실패 경로는 실행 중 생성한 잘못된 임시 키와 **로컬 401 제공자**를 사용해 실제 SDK → 규칙 대체 → DB/API → 요약·초안의 `AI 호출 실패` 배지를 검사합니다. 실제 Anthropic 서비스의 인증 거부나 장애를 호출하는 테스트는 아닙니다. 임시 파일 DB 서버 두 개(4173/4174)를 자동 시작하며 운영 DB·자격 환경변수와 `.env`를 사용하지 않습니다.
+
+`e2e/tools.spec.js`는 녹화(CDP PNG 프레임)·슬라이드·정지 캡처 도구를 끝까지 실행합니다. GitHub 외부 응답만 고정 fixture이며 수집 라우트·분류·저장은 실제 코드입니다. 스크린샷·프레임·실패 trace는 **git에서 제외한 `tools/out/`**에 저장합니다. 기존 판정 기준과 프롬프트 문구는 바꾸지 않습니다.
+
+이 자동 검증은 **실제 Notion 웹훅·배포본 AI·영상 인코딩 확인을 대신하지 않습니다.** Notion 수동 점검 절차와 미확인 표기는 [docs/prompts.md 1-1장](docs/prompts.md)에 있습니다.
 
 ## 포트폴리오 소개
 
@@ -184,6 +201,23 @@ Notion API 조회는 블록마다 **마지막 편집자**만 알려주고 편집
 
 1. 첫 화면 → **시연용 예시 팀 불러오기** → 마감된 팀 3 리포트 (기여율 · 동료 증언 · 자기 기술)
 2. 실제 흐름: **새 팀 만들기** → 착수 설정의 **이 학생으로 보기**로 학생 확인·의견 → 교수 화면에서 반영 → 잠금 → **지금 마감 처리** → 학생 화면 동료평가 → 교수 리포트
+
+### 녹화·발표 캡처
+
+로컬 서버(`npm start`, 기본 3000)를 실행한 뒤:
+
+```bash
+node tools/record-demo.mjs tools/out/record           # PNG 프레임 + timeline.json
+node tools/record-demo.mjs tools/out/check --check    # 같은 흐름, 주요 12장만 캡처
+node tools/capture-slides.mjs tools/out/slides        # 2배 해상도 12장
+node tools/capture-demo.mjs tools/out/capture         # 같은 흐름의 정지 캡처
+```
+
+공유 흐름(`tools/demo-flow.mjs`): **교수 기준 붙여넣기 → AI 정리 버튼 → 교수 수정·확정 → 학생 확인 → 잠금 → GitHub 수집 → 확인 필요 → 리포트·산식·원본**. 키가 없으면 규칙 초안·규칙 분류로 표시됩니다. 실제 수집은 공개 저장소를 조회하므로 네트워크와 GitHub 한도가 필요합니다. 불일치 설명은 예시 표시가 있는 별도 시연 팀의 고정 2건으로 보여 주며, 이 값을 실제 LLM의 이번 출력으로 주장하지 않습니다. 도구가 만든 팀은 종료 시 삭제합니다.
+
+`DEMO_BASE_URL`로 로컬 서버 주소, `DEMO_PAUSE_MS`로 장면 대기 시간을 지정할 수 있습니다. `CHROME_PATH`는 선택 사항이며 기본값은 Playwright Chromium입니다. 네트워크 없는 도구 점검은 `npm run e2e`에 포함됩니다.
+
+Python 합성 도구(`compose-demo.py`, `cut-demo.py`, `make-video.py`, `compose-slides.py`)는 새 PNG 이름과 `invite → criteria → lock → collect → review → report` 단계를 사용합니다. `cut-demo.py`는 과거 촬영의 절대 타임코드 대신 새 `timeline.json`의 단계 시작점을 사용합니다. 실제 영상 제작에는 기존 Pillow·imageio-ffmpeg 환경이 필요하며 **촬영 속도·최종 MP4/GIF와 발표 자막은 사람이 확인**해야 합니다.
 
 ## 구조
 
