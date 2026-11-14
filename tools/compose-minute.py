@@ -14,7 +14,7 @@ FADE = 0.4                            # 장면 전환 디졸브
 ZIN, ZOUT, ZMAX = 0.55, 0.45, 2.0     # 확대 들어가기·나오기(초), 최대 배율
 CARD_IN, CARD_OUT = 0.45, 0.3         # 장 제목 카드 들어오기·나가기(초)
 LAST_MAX = 8.0                        # 마지막 장면은 8초에서 끝낸다 (전체 60±3초)
-SAFE = 116                            # 확대 화면 맨 위는 장 제목 카드 자리라 비워 둔다 (영상 px)
+SAFE = 128                            # 확대 화면 맨 위는 장 제목 자리라 비워 둔다 (영상 px)
 
 # 자막 — 시나리오 문구 그대로 (바꾸지 말 것)
 CAPTIONS = [
@@ -42,7 +42,7 @@ def noto(size, weight):
     return f
 
 
-F_TITLE, F_NUM, F_NOTE = noto(34, 700), noto(20, 700), noto(19, 500)
+F_TITLE, F_NUM, F_NOTE = noto(46, 800), noto(24, 800), noto(19, 500)
 
 tl = json.loads((SRC / "timeline.json").read_text(encoding="utf-8"))
 VW, VH = tl["viewport"]
@@ -143,8 +143,12 @@ for z in zooms:
         st.paste(raw.crop((0, TRIM, raw.width, raw.height - TRIM)), (PADX, top_pad))
         _stills[z["still"]] = st
         band = st.width * H / W                # 폭을 화면 폭에 맞춘 띠 높이
+        # 확대가 끝나는 위치 = 여백을 덧댄 스틸의 첫 띠와 같은 자리 (화면 px). 다르면 넘어갈 때 튄다
+        sx0 = bx - PADX / 2
+        sy0 = by + (TRIM - top_pad) / 2
+        vw = st.width / 2
         ZONES.append(dict(kind="pan", a=z["t0"], b=t1, still=z["still"],
-                          start_vp=(bx, by, bx + bw, by + bw * H / W), band=band, travel=max(0.0, st.height - band)))
+                          start_vp=(sx0, sy0, sx0 + vw, sy0 + vw * H / W), band=band, travel=max(0.0, st.height - band)))
     else:
         x, y, w, h = z["box"]
         ZONES.append(dict(kind="zoom", a=z["t0"], b=t1, still=z.get("still"), rect=fit(x, y, w, h, W, H, W / ZMAX)))
@@ -157,12 +161,16 @@ def view_at(t):
         if zn["kind"] == "pan" and a - 0.01 <= t:
             # 화면 → 소명 쪽 폭으로 확대(녹화 프레임) → 2배 스틸에서 아래로 훑기
             k = ease((t - a) / ZIN)
+            st = still(zn["still"])
             if k < 1:
                 return cut(frame_at(t), lerp_rect(FULL, zn["start_vp"], k)), None
-            st = still(zn["still"])
             span = max(0.1, (b - a) - ZIN - 0.8)
             top = zn["travel"] * ease((t - a - ZIN) / span)
-            return st.crop((0, round(top), st.width, round(top + zn["band"]))).resize((W, H), Image.LANCZOS), None
+            sharp = st.crop((0, round(top), st.width, round(top + zn["band"]))).resize((W, H), Image.LANCZOS)
+            blend = (t - a - ZIN) / 0.2          # 녹화 프레임 → 2배 스틸을 0.2초에 걸쳐 교차
+            if blend < 1:
+                sharp = Image.blend(cut(frame_at(t), zn["start_vp"]), sharp, max(0.0, blend))
+            return sharp, None
         if zn["kind"] == "zoom" and a - 0.01 <= t <= b + ZOUT:
             k = ease((t - a) / ZIN) if t < b else 1 - ease((t - b) / ZOUT)
             rect = lerp_rect(FULL, zn["rect"], k)
@@ -178,8 +186,15 @@ def view_at(t):
 
 
 def cut(img, rect):
+    """rect(화면 px)를 잘라 영상 크기로. 화면 밖은 흰색 (인쇄 화면 배경과 같다)"""
     s = img.width / W                 # 프레임은 1배, 스틸은 2배
-    return img.crop(tuple(round(v * s) for v in rect)).resize((W, H), Image.LANCZOS)
+    box = tuple(round(v * s) for v in rect)
+    if box[0] < 0 or box[1] < 0 or box[2] > img.width or box[3] > img.height:
+        canvas = Image.new("RGB", (box[2] - box[0], box[3] - box[1]), (255, 255, 255))
+        canvas.paste(img.crop((max(0, box[0]), max(0, box[1]), min(img.width, box[2]), min(img.height, box[3]))),
+                     (max(0, -box[0]), max(0, -box[1])))
+        return canvas.resize((W, H), Image.LANCZOS)
+    return img.crop(box).resize((W, H), Image.LANCZOS)
 
 
 # ── 포인터와 클릭 표시
@@ -224,32 +239,44 @@ def draw_pointer(img, t, rect):
     img.paste(_arrow, (int(px - 4), int(py - 3)), _arrow)
 
 
-# ── 장 제목 카드
+# ── 장 제목: 화면 윗부분을 가로로 어둡게 깔고 그 위에 흰 글씨로 크게
+# (배경 화면에 글자가 많아 흰 카드로는 제목이 묻혔다)
+BAND_H, SOLID = 176, 112
+_band = Image.new("RGBA", (W, BAND_H), (0, 0, 0, 0))
+_bd = ImageDraw.Draw(_band)
+for y in range(BAND_H):
+    # 제목이 놓이는 위쪽은 진하게 덮고, 그 아래만 부드럽게 옅어진다
+    a = 222 if y < SOLID else int(222 * (1 - ease((y - SOLID) / (BAND_H - SOLID))))
+    _bd.line((0, y, W, y), fill=(20, 24, 42, a))
+
+
 def card(n):
-    num = f"{n + 1:02d}"
-    tw = ImageDraw.Draw(Image.new("RGB", (1, 1))).textlength(CAPTIONS[n], font=F_TITLE)
-    w, h = int(tw) + 56 + 40 + 16, 72
-    pad = 24
-    layer = Image.new("RGBA", (w + pad * 2, h + pad * 2), (0, 0, 0, 0))
-    sh = Image.new("RGBA", layer.size, (0, 0, 0, 0))
-    ImageDraw.Draw(sh).rounded_rectangle((pad, pad + 6, pad + w, pad + h + 6), 16, fill=(38, 60, 140, 46))
-    layer = Image.alpha_composite(layer, sh.filter(ImageFilter.GaussianBlur(10)))
+    layer = Image.new("RGBA", (W, BAND_H), (0, 0, 0, 0))
     d = ImageDraw.Draw(layer)
-    d.rounded_rectangle((pad, pad, pad + w, pad + h), 16, fill=(255, 255, 255, 250), outline=(232, 236, 246, 255))
-    d.rounded_rectangle((pad + 16, pad + 16, pad + 56, pad + 56), 10, fill=BLUE)
-    d.text((pad + 36, pad + 36), num, font=F_NUM, fill=(255, 255, 255), anchor="mm")
-    d.text((pad + 72, pad + 36), CAPTIONS[n], font=F_TITLE, fill=INK, anchor="lm")
+    d.rounded_rectangle((44, 34, 98, 88), 12, fill=BLUE)
+    d.text((71, 61), f"{n + 1:02d}", font=F_NUM, fill=(255, 255, 255), anchor="mm")
+    shadow = Image.new("RGBA", (W, BAND_H), (0, 0, 0, 0))
+    ImageDraw.Draw(shadow).text((120, 62), CAPTIONS[n], font=F_TITLE, fill=(0, 0, 0, 170), anchor="lm")
+    layer.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(4)))
+    d = ImageDraw.Draw(layer)
+    d.text((120, 60), CAPTIONS[n], font=F_TITLE, fill=(255, 255, 255), anchor="lm")
     return layer
 
 
 CARDS = [card(i) for i in range(len(CAPTIONS))]
-CX, CY = 36 - 24, 30 - 24   # 카드 위치 (그림자 여백 제외)
 
 
 def paste_card(img, n, t_in, t_left):
     """t_in: 장면 시작 후 지난 시간, t_left: 장면 끝까지 남은 시간"""
+    first, last = n == 0, n == len(CAPTIONS) - 1
+    # 띠는 장면이 바뀌어도 그대로 두고(깜박임 없이) 글자만 바꾼다
+    kb = ease(t_in / CARD_IN) if first else 1.0
+    band = _band if kb >= 1 else _band.copy()
+    if kb < 1:
+        band.putalpha(band.getchannel("A").point(lambda v: int(v * kb)))
+    img.alpha_composite(band, (0, 0))
     k_in = ease(t_in / CARD_IN)
-    k_out = ease(t_left / CARD_OUT) if n < len(CAPTIONS) - 1 else 1.0
+    k_out = 1.0 if last else ease(t_left / CARD_OUT)
     k = min(k_in, k_out)
     if k <= 0:
         return
@@ -257,8 +284,7 @@ def paste_card(img, n, t_in, t_left):
     if k < 1:
         layer = layer.copy()
         layer.putalpha(layer.getchannel("A").point(lambda v: int(v * k)))
-    dx = int(-36 * (1 - k_in))
-    img.paste(layer, (CX + dx, CY), layer)
+    img.alpha_composite(layer, (int(-40 * (1 - k_in)), 0))
 
 
 NOTE_BAR = Image.new("RGBA", (W, 44), (255, 255, 255, 228))
