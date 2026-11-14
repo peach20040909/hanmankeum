@@ -344,3 +344,17 @@ body:has(.print-report) .page-heading,body:has(.print-report) .project-strip,bod
 .kind-chip{display:inline-flex;align-items:center;gap:4px;font-size:12px;color:#6b7385;padding:3px 8px;border:1px solid #ebedf3;border-radius:6px;background:#fff;cursor:pointer;margin:0!important;font-weight:500!important}
 .kind-chip input{margin:0}
 .kind-chip:has(input:checked){border-color:#a7bfff;background:#f2f6ff;color:var(--blue-dark)}
+/* 기여도 리포트 PDF 가독성: 한글은 어절 단위로만 끊고, 근거 표는 내용 칸에 폭을 몰아준다 */
+@media print{
+.dossier{word-break:keep-all;overflow-wrap:anywhere}
+.dossier-table td{word-break:keep-all;overflow-wrap:anywhere}
+.dossier-table td strong{white-space:nowrap}
+.dossier-table th:nth-child(1),.dossier-table td:nth-child(1){width:56px;white-space:nowrap}
+.dossier-table th:nth-child(2),.dossier-table td:nth-child(2){width:124px}
+.dossier-table th:nth-child(4),.dossier-table td:nth-child(4){width:74px}
+.dossier-table th:nth-child(5),.dossier-table td:nth-child(5){width:88px}
+.dossier-table td:last-child,.dossier-table th:last-child{text-align:left}
+.dossier-table:has(th:nth-child(6)) th:nth-child(2),.dossier-table:has(th:nth-child(6)) td:nth-child(2){width:52px}
+.dossier-table:has(th:nth-child(6)) th:nth-child(5),.dossier-table:has(th:nth-child(6)) td:nth-child(5){width:74px}
+.dossier-table:has(th:nth-child(6)) th:nth-child(6),.dossier-table:has(th:nth-child(6)) td:nth-child(6){width:88px}
+}
