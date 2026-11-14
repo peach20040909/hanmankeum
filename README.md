@@ -14,7 +14,7 @@ API 키 없이도 전부 동작합니다. AI 키가 없으면 규칙 기반으�
 ```bash
 git clone https://github.com/peach20040909/hanmankeum.git
 cd hanmankeum && npm install
-npm test        # 기존 16개 + Notion 5개 — 아래 '테스트' 참고
+npm test        # 22개 (Notion 5개 포함) — 아래 '테스트' 참고
 npm start       # http://localhost:3000
 ```
 
@@ -39,6 +39,7 @@ npm start       # http://localhost:3000
 |---|---|
 | `api.test.js` | 착수→잠금→마감 흐름, 초대 키 권한(학생이 리포트 접근 403), 동료평가 1회 제한, 익명 처리, 첨부 3MB 한도와 본인 첨부만 열람, 확인 필요·AI 도움 표시 |
 | `score.test.js` | 가중치 × 항목 내 상대비율 합산, 기록이 없는 항목의 가중치 재배분(팀 합 100% 유지) |
+| `legacy.test.js` | 교수 기준 도입 전에 만든 옛 팀은 읽을 때 '이전 방식 기준'으로 표시하고, DB·기준·점수는 그대로 보존 |
 | `collect.test.js` | 교수 기준(키워드·활동 종류)으로 규칙 분류가 맞게 떨어지는지, '기준 밖' 처리, AI 기준 초안 정리·검증 |
 | `generate.test.js` | 근거 번호 검증(전부 없는 번호·근거 없음·평가 표현은 제외, 일부만 틀리면 유효한 근거만 남김), 근거-내용 연결이 약한 문장 표시, 초안 대비 수정률 |
 | `notion.test.js` | 가짜 외부 조회 + 실제 교수 기준 규칙 분류·DB 저장: 페이지 생성, 남의 문서 편집, 기준 밖, 분류 출처/버전, 중복·팀 범위, 틀린 웹훅 서명 거부 |
