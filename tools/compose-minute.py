@@ -1,7 +1,7 @@
 # 녹화 프레임 → 결선용 1분 시연 영상 (1920×1080, 30fps, 무음)
 #   python -I tools/compose-minute.py            (입력 tools/out/minute)
-# 레이아웃: 왼쪽 576px 자막 패널 + 오른쪽 실제 화면 1344×1008(원본 크기 그대로라 글자가 선명).
-# 확대는 녹화 때 기록한 상자를 2배 해상도 프레임에서 잘라 키운다.
+# 서비스 화면이 영상 전체를 채우고, 장 제목은 왼쪽 위 카드로 미끄러져 들어온다.
+# 확대 구간은 녹화 때 찍은 2배 스틸에서 잘라 선명하게, 포인터와 클릭 표시는 여기서 그린다.
 import json, subprocess, sys
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
@@ -10,10 +10,11 @@ import imageio_ffmpeg
 SRC = Path("tools/out/minute")
 OUT = SRC / "hanmankeum-demo-60s.mp4"
 W, H, FPS = 1920, 1080, 30
-PANEL = 576
-AX, AY = PANEL, 36                    # 실제 화면 위치
-FADE = 0.4                            # 장면 전환
-ZIN, ZOUT, ZMAX = 0.55, 0.45, 2.1     # 확대 들어가기·나오기(초), 최대 배율
+FADE = 0.4                            # 장면 전환 디졸브
+ZIN, ZOUT, ZMAX = 0.55, 0.45, 2.0     # 확대 들어가기·나오기(초), 최대 배율
+CARD_IN, CARD_OUT = 0.45, 0.3         # 장 제목 카드 들어오기·나가기(초)
+LAST_MAX = 8.0                        # 마지막 장면은 8초에서 끝낸다 (전체 60±3초)
+SAFE = 116                            # 확대 화면 맨 위는 장 제목 카드 자리라 비워 둔다 (영상 px)
 
 # 자막 — 시나리오 문구 그대로 (바꾸지 말 것)
 CAPTIONS = [
@@ -26,70 +27,36 @@ CAPTIONS = [
     "자기 기술·동료 증언은 수치와 분리",
     "기여율과 근거를 함께",
 ]
-# 줄바꿈 위치만 지정한다 (이어 붙이면 위 문구와 같아야 함 — 아래에서 검사)
-CAPTION_LINES = [
-    ["교수님이 확정한", "평가기준"],
-    ["AI 분류 ≠ 규칙 판단", "→ 확인 필요"],
-    ["AI 판단 · 규칙 판단 ·", "이유"],
-    ["원본을 보고", "교수가 결정"],
-    ["수정 전 판단도 보존"],
-    ["온라인 기록 0%", "≠ 기여 0%"],
-    ["자기 기술·동료 증언은", "수치와 분리"],
-    ["기여율과 근거를 함께"],
-]
-for _c, _l in zip(CAPTIONS, CAPTION_LINES):
-    assert " ".join(_l) == _c, (_c, _l)
 NOTICE = "시연 팀: 실제 저장소 커밋·PR 사용 / 팀원 배정·분류·기여율은 설명용 예시"
 NOTICE_SEC = 3.0
 
-BD, RG = "C:/Windows/Fonts/malgunbd.ttf", "C:/Windows/Fonts/malgun.ttf"
-F_LOGO, F_TAG = ImageFont.truetype(BD, 34), ImageFont.truetype(RG, 17)
-F_NUM, F_CAP = ImageFont.truetype(BD, 22), ImageFont.truetype(BD, 46)
-F_NOTE, F_FOOT = ImageFont.truetype(RG, 19), ImageFont.truetype(RG, 16)
 # 서비스 색 그대로 (public/style.css: --bg #f5f5fa · --ink #262b3e · --muted #7b8091 · --blue #4b7cf3)
-BG, INK, DIM, ACC, BAR, PANEL_BG = (245, 245, 250), (38, 43, 62), (123, 128, 145), (75, 124, 243), (220, 226, 242), (255, 255, 255)
+BG, INK, DIM, BLUE = (245, 245, 250), (38, 43, 62), (123, 128, 145), (75, 124, 243)
+
+NOTO = "C:/Windows/Fonts/NotoSansKR-VF.ttf"
+
+
+def noto(size, weight):
+    f = ImageFont.truetype(NOTO, size)
+    f.set_variation_by_axes([weight])
+    return f
+
+
+F_TITLE, F_NUM, F_NOTE = noto(34, 700), noto(20, 700), noto(19, 500)
 
 tl = json.loads((SRC / "timeline.json").read_text(encoding="utf-8"))
 VW, VH = tl["viewport"]
-DSF = tl["dsf"]
-frames = tl["frames"]
-scenes = tl["scenes"]
-zooms = tl["zooms"]
+frames, scenes, zooms = tl["frames"], tl["scenes"], tl["zooms"]
+MOUSE, CLICKS = tl["mouse"], tl["clicks"]
 if len(scenes) != len(CAPTIONS):
     sys.exit(f"장면 수가 다릅니다: 녹화 {len(scenes)} / 자막 {len(CAPTIONS)}")
+if (VW, VH) != (W, H):
+    sys.exit(f"녹화 화면 {VW}x{VH} 가 영상 크기와 다릅니다")
 
 T0 = scenes[0]["t0"]
-LAST_MAX = 8.0                         # 마지막 장면은 확대한 채로 8초에서 끝낸다 (전체 60±3초)
 scenes[-1]["t1"] = min(scenes[-1]["t1"], scenes[-1]["t0"] + LAST_MAX)
 TOTAL = scenes[-1]["t1"] - T0
 bounds = [s["t0"] - T0 for s in scenes] + [TOTAL]
-
-_probe = ImageDraw.Draw(Image.new("RGB", (1, 1)))
-
-
-def wrap(text, font, width):
-    """어절 단위로, 두 줄이면 길이가 비슷하게 끊는다 (한 단어만 떨어지는 줄 방지)"""
-    words = text.split(" ")
-    if _probe.textlength(text, font) <= width:
-        return [text]
-    best = None
-    for i in range(1, len(words)):
-        a, b = " ".join(words[:i]), " ".join(words[i:])
-        wa, wb = _probe.textlength(a, font), _probe.textlength(b, font)
-        if max(wa, wb) <= width and (best is None or max(wa, wb) < best[0]):
-            best = (max(wa, wb), [a, b])
-    if best:
-        return best[1]
-    lines, line = [], ""
-    for word in words:
-        trial = f"{line} {word}".strip()
-        if _probe.textlength(trial, font) <= width or not line:
-            line = trial
-        else:
-            lines.append(line)
-            line = word
-    lines.append(line)
-    return lines
 
 
 def ease(x):
@@ -97,13 +64,16 @@ def ease(x):
     return x * x * (3 - 2 * x)
 
 
-# ── 프레임 로딩 (같은 프레임이 연달아 쓰이므로 하나만 기억)
-_cache = {"i": None, "img": None}
+def lerp_rect(a, b, k):
+    return tuple(p + (q - p) * k for p, q in zip(a, b))
+
+
+# ── 녹화 프레임 (화면이 안 바뀌면 프레임이 오지 않으므로 직전 프레임을 쓴다)
 src_times = [f["t"] for f in frames]
+_cache = {"i": None, "img": None}
 
 
 def frame_at(t):
-    """녹화 시각 t 이전의 마지막 프레임 (화면이 안 바뀌면 프레임이 오지 않는다)"""
     lo, hi = 0, len(src_times) - 1
     if t <= src_times[0]:
         idx = 0
@@ -121,28 +91,6 @@ def frame_at(t):
     return _cache["img"]
 
 
-FULL = (0.0, 0.0, float(VW), float(VH))   # 모든 좌표는 CSS px
-
-
-def target_rect(box):
-    """상자를 4:3 화면 비율로 넓히고 최대 배율을 넘지 않게 맞춘다 (CSS px)"""
-    x, y, w, h = box
-    cx, cy = x + w / 2, y + h / 2
-    ar = VW / VH
-    if w / h > ar:
-        h = w / ar
-    else:
-        w = h * ar
-    minw = VW / ZMAX
-    if w < minw:
-        w, h = minw, minw / ar
-    w, h = min(w, VW), min(h, VH)
-    x0 = min(max(0, cx - w / 2), VW - w)
-    y0 = min(max(0, cy - h / 2), VH - h)
-    return (x0, y0, x0 + w, y0 + h)
-
-
-ZR = [(z["t0"], z.get("t1", z["t0"] + 1.5), target_rect(z["box"]), z.get("still")) for z in zooms]
 _stills = {}
 
 
@@ -152,73 +100,169 @@ def still(name):
     return _stills[name]
 
 
-def zoom_at(t):
-    """(확대 영역 CSS px, 스틸 이름, 스틸 섞는 비율)"""
-    for a, b, rect, st in ZR:
-        if a - 0.01 <= t <= b + ZOUT:
+FULL = (0.0, 0.0, float(W), float(H))   # 화면 px
+
+
+def fit(x, y, w, h, limit_w, limit_h, minw):
+    """상자를 16:9 로 넓히고 최대 배율을 넘지 않게, 영역 안에 들어오게 맞춘다.
+    상자 윗변이 확대 화면에서 SAFE 아래로 오도록 위쪽 여백을 둔다 (카드에 안 가리게)."""
+    ar = W / H
+    top, bottom = y, y + h
+    for _ in range(3):
+        rw, rh = (w, w / ar) if w / h > ar else (h * ar, h)
+        if rw < minw:
+            rw, rh = minw, minw / ar
+        rw, rh = min(rw, limit_w), min(rh, limit_h)
+        m = SAFE * rh / H
+        y0 = (top + bottom) / 2 - rh / 2
+        if top - y0 < m:
+            y0 = top - m
+        if y0 + rh < bottom:              # 여백을 두니 아래가 잘리면 상자를 키워 다시
+            h = bottom - (top - m)
+            y = top - m
+            continue
+        break
+    x0 = min(max(0, x + w / 2 - rw / 2), limit_w - rw)
+    y0 = min(max(0, y0), limit_h - rh)
+    return (x0, y0, x0 + rw, y0 + rh)
+
+
+ZONES = []
+for z in zooms:
+    t1 = z.get("t1", z["t0"] + 1.5)
+    if z.get("pan"):
+        if not z.get("still"):
+            continue
+        bx, by, bw, bh = z["box"]
+        raw = still(z["still"])                # 소명 쪽만 2배로 찍은 이미지
+        # 인쇄 배치에선 소명 쪽이 화면 왼쪽 끝에 붙어 있어 좌우 여백을 덧대고,
+        # 위아래로 걸친 앞뒤 학생의 한 줄씩은 잘라 낸다
+        PADX, TRIM = 56, 34
+        top_pad = int(SAFE * (raw.width + PADX * 2) / W)   # 첫 화면에서 카드가 제목을 가리지 않게
+        st = Image.new("RGB", (raw.width + PADX * 2, raw.height - TRIM * 2 + top_pad), (255, 255, 255))
+        st.paste(raw.crop((0, TRIM, raw.width, raw.height - TRIM)), (PADX, top_pad))
+        _stills[z["still"]] = st
+        band = st.width * H / W                # 폭을 화면 폭에 맞춘 띠 높이
+        ZONES.append(dict(kind="pan", a=z["t0"], b=t1, still=z["still"],
+                          start_vp=(bx, by, bx + bw, by + bw * H / W), band=band, travel=max(0.0, st.height - band)))
+    else:
+        x, y, w, h = z["box"]
+        ZONES.append(dict(kind="zoom", a=z["t0"], b=t1, still=z.get("still"), rect=fit(x, y, w, h, W, H, W / ZMAX)))
+
+
+def view_at(t):
+    """(화면 이미지, 이 시각의 확대 영역(화면 px) 또는 None)"""
+    for zn in ZONES:
+        a, b = zn["a"], zn["b"]
+        if zn["kind"] == "pan" and a - 0.01 <= t:
+            # 화면 → 소명 쪽 폭으로 확대(녹화 프레임) → 2배 스틸에서 아래로 훑기
+            k = ease((t - a) / ZIN)
+            if k < 1:
+                return cut(frame_at(t), lerp_rect(FULL, zn["start_vp"], k)), None
+            st = still(zn["still"])
+            span = max(0.1, (b - a) - ZIN - 0.8)
+            top = zn["travel"] * ease((t - a - ZIN) / span)
+            return st.crop((0, round(top), st.width, round(top + zn["band"]))).resize((W, H), Image.LANCZOS), None
+        if zn["kind"] == "zoom" and a - 0.01 <= t <= b + ZOUT:
             k = ease((t - a) / ZIN) if t < b else 1 - ease((t - b) / ZOUT)
-            # 확대가 다 들어간 뒤 멈춰 있는 동안만 2배 스틸을 쓴다 (0.15초에 걸쳐 바꿈)
-            sk = 0.0
-            if st and a + ZIN <= t <= b:
+            rect = lerp_rect(FULL, zn["rect"], k)
+            img = cut(frame_at(t), rect)
+            # 확대가 다 들어가 멈춰 있는 동안만 2배 스틸로 바꾼다 (0.15초에 걸쳐)
+            if zn["still"] and a + ZIN <= t <= b:
                 sk = max(0.0, min(1.0, (t - a - ZIN) / 0.15, (b - t) / 0.15))
-            return tuple(f + (r - f) * k for f, r in zip(FULL, rect)), st, sk
-    return FULL, None, 0.0
+                if sk > 0:
+                    sharp = cut(still(zn["still"]), rect)
+                    img = sharp if sk >= 1 else Image.blend(img, sharp, sk)
+            return img, rect
+    return frame_at(t), FULL
 
 
 def cut(img, rect):
-    s = img.width / VW                # 프레임은 1배, 스틸은 2배
-    return img.crop(tuple(round(v * s) for v in rect)).resize((VW, VH), Image.LANCZOS)
+    s = img.width / W                 # 프레임은 1배, 스틸은 2배
+    return img.crop(tuple(round(v * s) for v in rect)).resize((W, H), Image.LANCZOS)
 
 
-def app_view(t):
-    rect, st, sk = zoom_at(t)
-    view = cut(frame_at(t), rect)
-    if sk > 0:
-        view = Image.blend(view, cut(still(st), rect), sk) if sk < 1 else cut(still(st), rect)
-    return view
+# ── 포인터와 클릭 표시
+def mouse_at(t):
+    if t <= MOUSE[0]["t"]:
+        return MOUSE[0]["x"], MOUSE[0]["y"]
+    for p, q in zip(MOUSE, MOUSE[1:]):
+        if p["t"] <= t < q["t"]:
+            k = ease((t - p["t"]) / max(1e-3, q["t"] - p["t"]))
+            return p["x"] + (q["x"] - p["x"]) * k, p["y"] + (q["y"] - p["y"]) * k
+    return MOUSE[-1]["x"], MOUSE[-1]["y"]
 
 
-# ── 고정 요소 (한 번만 그린다)
-mask = Image.new("L", (VW, VH), 0)
-ImageDraw.Draw(mask).rounded_rectangle((0, 0, VW - 1, VH - 1), 14, fill=255)
-base = Image.new("RGB", (W, H), BG)
-ImageDraw.Draw(base).rectangle((0, 0, PANEL - 1, H), fill=PANEL_BG)
-ImageDraw.Draw(base).line((PANEL - 1, 0, PANEL - 1, H), fill=(236, 236, 243), width=1)
-shadow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-ImageDraw.Draw(shadow).rounded_rectangle((AX + 6, AY + 10, AX + VW + 6, AY + VH + 10), 16, fill=(61, 110, 240, 46))
-base.paste(shadow.filter(ImageFilter.GaussianBlur(14)), (0, 0), shadow.filter(ImageFilter.GaussianBlur(14)))
-d = ImageDraw.Draw(base)
-d.rounded_rectangle((64, 64, 104, 104), 11, fill=ACC)
-d.text((84, 84), "한", font=ImageFont.truetype(BD, 22), fill=(255, 255, 255), anchor="mm")
-d.text((120, 60), "한만큼", font=F_LOGO, fill=INK)
-d.text((122, 104), "AI 리터러시 경진대회 · 결선 시연", font=F_TAG, fill=DIM)
-d.text((64, H - 70), "hanmankeum.vercel.app", font=F_FOOT, fill=DIM)
+S = 2  # 포인터는 2배로 그려 줄인다 (가장자리 매끈하게)
+_arrow = Image.new("RGBA", (34 * S, 40 * S), (0, 0, 0, 0))
+_d = ImageDraw.Draw(_arrow)
+_pts = [(4, 3), (4, 31), (11, 24), (16, 36), (21, 34), (16, 22), (26, 22)]
+_d.polygon([(x * S, y * S) for x, y in _pts], fill=(255, 255, 255, 255))
+_d.polygon([(x * S, y * S) for x, y in [(6, 7), (6, 27), (11.5, 21.5), (16.5, 32.5), (18.5, 31.6), (13.6, 20.3), (21.5, 20.3)]], fill=(24, 27, 40, 255))
+_arrow = _arrow.resize((34, 40), Image.LANCZOS)
+_shadow = Image.new("RGBA", _arrow.size, (0, 0, 0, 0))
+_shadow.paste((0, 0, 0, 90), (0, 0), _arrow)
+_shadow = _shadow.filter(ImageFilter.GaussianBlur(2.2))
 
 
-def panel_text(n, alpha):
-    """장면 번호와 자막 한 묶음을 투명도와 함께 그린다"""
-    layer = Image.new("RGBA", (PANEL, H), (0, 0, 0, 0))
-    dl = ImageDraw.Draw(layer)
-    a = int(255 * alpha)
-    dl.text((64, 380), f"{n + 1:02d} / {len(CAPTIONS):02d}", font=F_NUM, fill=ACC + (a,))
-    y = 424
-    for line in CAPTION_LINES[n]:
-        dl.text((64, y), line, font=F_CAP, fill=INK + (a,))
-        y += 64
+def draw_pointer(img, t, rect):
+    if rect is None:
+        return
+    x0, y0, x1, y1 = rect
+    sx = W / (x1 - x0)
+    over = ImageDraw.Draw(img, "RGBA")
+    for c in CLICKS:
+        dt = t - c["t"]
+        if 0 <= dt < 0.55:
+            px, py = (c["x"] - x0) * sx, (c["y"] - y0) * sx
+            r = 12 + 26 * ease(dt / 0.55)
+            a = int(220 * (1 - dt / 0.55))
+            over.ellipse((px - r, py - r, px + r, py + r), outline=BLUE + (a,), width=4)
+    mx, my = mouse_at(t)
+    px, py = (mx - x0) * sx, (my - y0) * sx
+    img.paste(_shadow, (int(px - 3), int(py)), _shadow)
+    img.paste(_arrow, (int(px - 4), int(py - 3)), _arrow)
+
+
+# ── 장 제목 카드
+def card(n):
+    num = f"{n + 1:02d}"
+    tw = ImageDraw.Draw(Image.new("RGB", (1, 1))).textlength(CAPTIONS[n], font=F_TITLE)
+    w, h = int(tw) + 56 + 40 + 16, 72
+    pad = 24
+    layer = Image.new("RGBA", (w + pad * 2, h + pad * 2), (0, 0, 0, 0))
+    sh = Image.new("RGBA", layer.size, (0, 0, 0, 0))
+    ImageDraw.Draw(sh).rounded_rectangle((pad, pad + 6, pad + w, pad + h + 6), 16, fill=(38, 60, 140, 46))
+    layer = Image.alpha_composite(layer, sh.filter(ImageFilter.GaussianBlur(10)))
+    d = ImageDraw.Draw(layer)
+    d.rounded_rectangle((pad, pad, pad + w, pad + h), 16, fill=(255, 255, 255, 250), outline=(232, 236, 246, 255))
+    d.rounded_rectangle((pad + 16, pad + 16, pad + 56, pad + 56), 10, fill=BLUE)
+    d.text((pad + 36, pad + 36), num, font=F_NUM, fill=(255, 255, 255), anchor="mm")
+    d.text((pad + 72, pad + 36), CAPTIONS[n], font=F_TITLE, fill=INK, anchor="lm")
     return layer
 
 
-def progress(n, frac):
-    layer = Image.new("RGBA", (PANEL, 8), (0, 0, 0, 0))
-    dl = ImageDraw.Draw(layer)
-    seg = (PANEL - 128 - 7 * 8) / 8
-    for i in range(8):
-        x = 64 + i * (seg + 8)
-        dl.rounded_rectangle((x, 0, x + seg, 6), 3, fill=BAR)
-        fill = 1 if i < n else (frac if i == n else 0)
-        if fill > 0:
-            dl.rounded_rectangle((x, 0, x + seg * fill, 6), 3, fill=ACC)
-    return layer
+CARDS = [card(i) for i in range(len(CAPTIONS))]
+CX, CY = 36 - 24, 30 - 24   # 카드 위치 (그림자 여백 제외)
+
+
+def paste_card(img, n, t_in, t_left):
+    """t_in: 장면 시작 후 지난 시간, t_left: 장면 끝까지 남은 시간"""
+    k_in = ease(t_in / CARD_IN)
+    k_out = ease(t_left / CARD_OUT) if n < len(CAPTIONS) - 1 else 1.0
+    k = min(k_in, k_out)
+    if k <= 0:
+        return
+    layer = CARDS[n]
+    if k < 1:
+        layer = layer.copy()
+        layer.putalpha(layer.getchannel("A").point(lambda v: int(v * k)))
+    dx = int(-36 * (1 - k_in))
+    img.paste(layer, (CX + dx, CY), layer)
+
+
+NOTE_BAR = Image.new("RGBA", (W, 44), (255, 255, 255, 228))
+ImageDraw.Draw(NOTE_BAR).text((W / 2, 22), NOTICE, font=F_NOTE, fill=DIM, anchor="mm")
 
 
 def scene_of(t):
@@ -229,34 +273,26 @@ def scene_of(t):
 
 
 def render(t):
-    """출력 시각 t(0~TOTAL)의 한 장"""
-    img = base.copy()
     n = scene_of(t)
     rec = T0 + t
-    view = app_view(rec)
-    # 장면 경계 앞뒤 FADE/2 동안 화면을 겹쳐 녹인다
+    img, rect = view_at(rec)
+    img = img.copy() if img.mode == "RGB" else img.convert("RGB")
+    draw_pointer(img, rec, rect)
     edge = bounds[n]
-    if n > 0 and t - edge < FADE / 2:
-        k = 0.5 + (t - edge) / FADE
-        view = Image.blend(app_view(T0 + edge - FADE / 2), view, ease(k))
-    img.paste(view, (AX, AY), mask)
-    # 자막도 경계에서 교차
-    into = t - bounds[n]
-    if n > 0 and into < FADE:
-        img.paste(panel_text(n - 1, 1 - ease(into / FADE)), (0, 0), panel_text(n - 1, 1 - ease(into / FADE)))
-        layer = panel_text(n, ease(into / FADE))
-    else:
-        layer = panel_text(n, 1.0)
-    img.paste(layer, (0, 0), layer)
-    pr = progress(n, (t - bounds[n]) / (bounds[n + 1] - bounds[n]))
-    img.paste(pr, (0, 640), pr)
-    # 첫 3초 고지 — 화면 아래 고정
+    if n > 0 and t - edge < FADE / 2:   # 장면 경계 디졸브
+        prev, prect = view_at(T0 + edge - FADE / 2)
+        prev = prev.copy()
+        draw_pointer(prev, T0 + edge - FADE / 2, prect)
+        img = Image.blend(prev, img, ease(0.5 + (t - edge) / FADE))
+    img = img.convert("RGBA")
+    paste_card(img, n, t - bounds[n], bounds[n + 1] - t)
     if t < NOTICE_SEC + 0.4:
         a = 1.0 if t < NOTICE_SEC else 1 - (t - NOTICE_SEC) / 0.4
-        layer = Image.new("RGBA", (W, 36), (0, 0, 0, 0))
-        ImageDraw.Draw(layer).text((AX + VW / 2, 18), NOTICE, font=F_NOTE, fill=DIM + (int(255 * a),), anchor="mm")
-        img.paste(layer, (0, H - 36), layer)
-    # 시작·끝 페이드
+        bar = NOTE_BAR if a >= 1 else NOTE_BAR.copy()
+        if a < 1:
+            bar.putalpha(bar.getchannel("A").point(lambda v: int(v * a)))
+        img.paste(bar, (0, H - 44), bar)
+    img = img.convert("RGB")
     edge_k = min(1.0, t / 0.3, (TOTAL - t) / 0.5)
     if edge_k < 1:
         img = Image.blend(Image.new("RGB", (W, H), BG), img, max(0.0, edge_k))
@@ -270,12 +306,15 @@ if __name__ == "__main__":
                              "-c:v", "libx264", "-preset", "slow", "-crf", "17", "-pix_fmt", "yuv420p",
                              "-movflags", "+faststart", "-an", str(OUT)], stdin=subprocess.PIPE)
     n_out = int(round(TOTAL * FPS))
-    # 장면별 대표 PNG: 확대가 끝까지 들어간 시점(없으면 장면 중간)
+    # 장면별 대표 PNG: 확대가 다 들어간 시점(없으면 장면 중간)
     picks = {}
     for i, s in enumerate(scenes):
         a, b = s["t0"], s["t1"]
         z = next((z for z in zooms if a <= z["t0"] < b), None)
-        picks[i] = (z["t0"] + ZIN + 0.4 - T0) if z else ((a + b) / 2 - T0)
+        tt = (z["t0"] + ZIN + 0.6) if z else (a + b) / 2
+        if z and z.get("pan"):
+            tt = min(b, z["t0"] + ZIN + 2.5)
+        picks[i] = tt - T0
     pick_frames = {int(round(v * FPS)): i for i, v in picks.items()}
     for k in range(n_out):
         img = render(k / FPS)

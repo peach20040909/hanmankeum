@@ -15,7 +15,9 @@ const BASE = process.env.DEMO_BASE_URL || 'https://hanmankeum.vercel.app';
 const OUT = 'tools/out/minute';
 const FRAMES = join(OUT, 'frames');
 const probe = process.argv.includes('--probe');
-const VW = 1344, VH = 1008, DSF = 2;   // 스틸 스크린샷이 2배로 찍힌다 (screencast 는 1배)
+// 영상(1920×1080)을 화면으로 꽉 채운다. 120% 배율로 그려 실제 배치는 1600×900 이지만
+// 글자는 1920 원본 해상도로 찍혀 선명하다. 확대용 스틸은 2배(3840×2160)로 따로 찍는다.
+const VW = 1920, VH = 1080, PAGE_ZOOM = 1.2, DSF = 2;
 
 // 장면 목표 길이(초). 동작이 끝나면 남은 시간만큼 그대로 보여 준다.
 const SCENES = [10, 8, 7, 8, 7, 6, 6, 8];
@@ -31,7 +33,7 @@ const api = async (path, key, method = 'GET') => {
 
 const browser = await chromium.launch();
 const errors = [];
-const frames = [], writes = [], scenes = [], zooms = [];
+const frames = [], writes = [], scenes = [], zooms = [], mouse = [], clicks = [];
 let team = null, cdp = null;
 const t0 = performance.now();
 const now = () => +((performance.now() - t0) / 1000).toFixed(3);
@@ -46,31 +48,16 @@ try {
   page.on('pageerror', e => errors.push('pageerror: ' + e.message));
   page.on('console', m => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
 
-  // 헤드리스 화면에는 마우스 포인터가 찍히지 않는다 → 페이지 위에 보이는 포인터를 그린다
-  await page.addInitScript(() => {
-    const css = `#__cur{position:fixed;left:0;top:0;width:26px;height:26px;z-index:2147483647;pointer-events:none;
-      transform:translate(-3px,-2px);transition:opacity .2s}
-      #__cur svg{width:26px;height:26px;filter:drop-shadow(0 2px 3px rgba(0,0,0,.35))}
-      .__ring{position:fixed;width:34px;height:34px;margin:-17px 0 0 -17px;border-radius:50%;
-      border:3px solid #4b7cf3;z-index:2147483646;pointer-events:none;animation:__r .55s ease-out forwards}
-      @keyframes __r{from{transform:scale(.3);opacity:1}to{transform:scale(1.6);opacity:0}}
-      .__hl{outline:3px solid #4b7cf3!important;outline-offset:4px;border-radius:6px;transition:outline-color .2s}`;
+  // 배율과 강조 테두리만 페이지에 넣는다. 마우스 포인터는 합성 단계에서 그린다
+  // (페이지 안에 그리면 배율 때문에 위치가 어긋나고, 확대하면 같이 뭉개진다).
+  await page.addInitScript(zoom => {
     const boot = () => {
-      if (document.getElementById('__cur')) return;
-      const s = document.createElement('style'); s.textContent = css; document.head.appendChild(s);
-      const c = document.createElement('div'); c.id = '__cur';
-      c.innerHTML = '<svg viewBox="0 0 24 24"><path d="M4 2l15 11-7 1-3 7z" fill="#111" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/></svg>';
-      c.style.left = (window.__cx ?? 680) + 'px'; c.style.top = (window.__cy ?? 520) + 'px';
-      document.body.appendChild(c);
-      addEventListener('mousemove', e => { window.__cx = e.clientX; window.__cy = e.clientY; c.style.left = e.clientX + 'px'; c.style.top = e.clientY + 'px'; }, true);
-      addEventListener('mousedown', e => {
-        const r = document.createElement('div'); r.className = '__ring';
-        r.style.left = e.clientX + 'px'; r.style.top = e.clientY + 'px';
-        document.body.appendChild(r); setTimeout(() => r.remove(), 600);
-      }, true);
+      const s = document.createElement('style');
+      s.textContent = `html{zoom:${zoom}} .__hl{outline:3px solid #4b7cf3!important;outline-offset:4px;border-radius:6px}`;
+      document.head.appendChild(s);
     };
     document.readyState === 'loading' ? addEventListener('DOMContentLoaded', boot) : boot();
-  });
+  }, PAGE_ZOOM);
 
   if (!probe) {
     cdp = await page.context().newCDPSession(page);
@@ -83,24 +70,35 @@ try {
     await cdp.send('Page.startScreencast', { format: 'jpeg', quality: 92, maxWidth: VW, maxHeight: VH, everyNthFrame: 1 });
   }
 
-  // ── 동작 도우미
-  let cx = VW / 2, cy = VH / 2;
-  const moveTo = async (x, y, steps = 14) => { await page.mouse.move(x, y, { steps }); cx = x; cy = y; };
+  // ── 동작 도우미 (좌표는 모두 화면 px)
+  let cx = VW * 0.55, cy = VH * 0.45;
+  const moveTo = async (x, y) => {
+    const dist = Math.hypot(x - cx, y - cy);
+    const dur = Math.min(700, Math.max(260, dist * 0.6));
+    mouse.push({ t: now(), x: Math.round(cx), y: Math.round(cy) });
+    await wait(dur);
+    await page.mouse.move(x, y);
+    cx = x; cy = y;
+    mouse.push({ t: now(), x: Math.round(x), y: Math.round(y) });
+  };
   const center = async loc => {
     await loc.scrollIntoViewIfNeeded();
     const b = await loc.boundingBox();
     if (!b) throw new Error('요소 위치를 찾지 못했습니다');
     return [b.x + b.width / 2, b.y + b.height / 2];
   };
-  const point = async loc => { const [x, y] = await center(loc); await moveTo(x, y); await wait(180); };
-  const click = async loc => { await point(loc); await page.mouse.down(); await wait(70); await page.mouse.up(); };
+  const point = async loc => { const [x, y] = await center(loc); await moveTo(x, y); await wait(160); };
+  const click = async loc => {
+    await point(loc);
+    clicks.push({ t: now(), x: Math.round(cx), y: Math.round(cy) });
+    await page.mouse.down(); await wait(70); await page.mouse.up();
+  };
   const box = async (loc, pad = 14) => {
     const b = await loc.boundingBox();
     return [Math.max(0, b.x - pad), Math.max(0, b.y - pad), b.width + pad * 2, b.height + pad * 2].map(Math.round);
   };
-  // 확대 구간 기록: 합성 단계가 이 상자를 화면에 맞춰 키운다 (CSS px 기준).
-  // screencast 프레임은 기기 배율을 무시하고 1배로 온다 → 확대해 멈춰 있는 동안 쓸
-  // 2배 해상도 스틸을 따로 찍어 둔다 (글자가 뭉개지지 않게).
+  // 확대 구간 기록: 합성 단계가 이 상자를 화면에 맞춰 키운다.
+  // screencast 프레임은 1배로 오므로, 확대해 멈춰 있는 동안 쓸 2배 스틸을 따로 찍는다.
   const zoomBox = async (b, holdMs) => {
     const z = { t0: now(), box: b };
     zooms.push(z);
@@ -113,18 +111,21 @@ try {
     z.t1 = now();
   };
   const zoom = async (loc, holdMs, pad) => zoomBox(await box(loc, pad), holdMs);
+  const union = (a, b) => {
+    const x0 = Math.min(a[0], b[0]), y0 = Math.min(a[1], b[1]);
+    return [x0, y0, Math.max(a[0] + a[2], b[0] + b[2]) - x0, Math.max(a[1] + a[3], b[1] + b[3]) - y0];
+  };
   const highlight = (loc, on = true) => loc.evaluate((el, on) => el.classList.toggle('__hl', on), on);
-  const snap = async n => { if (probe) await page.screenshot({ path: join(OUT, `probe-${n}.png`) }); };
-  let sceneStart = 0;
+  const snap = async n => { if (probe) await page.screenshot({ path: join(OUT, `probe-${n}.png`), scale: 'css' }); };
   const scene = async (n, fn) => {
-    sceneStart = now();
-    scenes.push({ n, t0: sceneStart });
+    const start = now();
+    scenes.push({ n, t0: start });
     await fn();
-    const target = sceneStart + SCENES[n - 1];
+    const target = start + SCENES[n - 1];
     if (!probe && now() < target) await wait((target - now()) * 1000);
-    scenes[scenes.length - 1].t1 = now();
+    scenes.at(-1).t1 = now();
     await snap(n);
-    console.log(`장면 ${n}: ${(scenes.at(-1).t1 - scenes.at(-1).t0).toFixed(1)}초`);
+    console.log(`장면 ${n}: ${(scenes.at(-1).t1 - start).toFixed(1)}초`);
   };
   const ready = async () => {
     await page.locator('#header-right').filter({ hasNotText: /^$/ }).waitFor();
@@ -137,16 +138,17 @@ try {
   // 녹화 시작 전에 리포트를 띄워 둔다 (첫 프레임부터 화면이 차 있도록)
   await page.goto(`${BASE}/#/join/${K}/report`);
   await ready();
-  await moveTo(700, 420, 1);
+  await page.mouse.move(cx, cy);
+  mouse.push({ t: now(), x: Math.round(cx), y: Math.round(cy) });
 
   // 1. 교수님이 확정한 평가기준
   await scene(1, async () => {
     await wait(1600);
     const card = page.locator('.scope-card');
     await card.scrollIntoViewIfNeeded();
-    await point(card.locator('h2'));
+    await point(card.locator('.mrl-tag'));
     await highlight(card);
-    await zoom(card, 6200, 16);
+    await zoom(card, 6000, 16);
     await highlight(card, false);
   });
 
@@ -155,12 +157,12 @@ try {
     await click(page.locator('.nav-item', { hasText: '활동 근거' }));
     await ready();
     await page.evaluate(() => scrollTo(0, 0));
-    await wait(500);
+    await wait(400);
     await click(page.locator('[data-action=flag][data-flag=review]'));
     await page.locator('.evidence-item').nth(1).waitFor();
     if (await page.locator('.evidence-item').count() !== 2) throw new Error('확인 필요가 2건이 아닙니다');
     await wait(300);
-    await zoom(page.locator('.evidence-list'), 3800, 18);
+    await zoom(page.locator('.evidence-list'), 3600, 18);
   });
 
   // 3. AI 판단 · 규칙 판단 · 이유
@@ -172,8 +174,7 @@ try {
     await cmp.scrollIntoViewIfNeeded();
     await point(cmp);
     // 비교 상자와 바로 아래 '이 기록이 근거가 된 이유'를 한 화면에
-    const a = await box(cmp, 12), b = await box(modal.locator('.explain-card').first(), 12);
-    await zoomBox([Math.min(a[0], b[0]), a[1], Math.max(a[0] + a[2], b[0] + b[2]) - Math.min(a[0], b[0]), b[1] + b[3] - a[1]], 4200);
+    await zoomBox(union(await box(cmp, 12), await box(modal.locator('.explain-card').first(), 12)), 4000);
   });
 
   // 4. 원본을 보고 교수가 결정 (원본 링크는 강조만, 새 탭 X)
@@ -182,13 +183,13 @@ try {
     await link.scrollIntoViewIfNeeded();
     await point(link);
     await highlight(link);
-    await zoom(modal.locator('.record-metadata'), 2600, 14);
+    await zoom(modal.locator('.record-metadata'), 2500, 14);
     await highlight(link, false);
     const sel = modal.locator('#record-type');
     await sel.scrollIntoViewIfNeeded();
     await point(sel);
-    await page.mouse.down(); await page.mouse.up();
-    await page.keyboard.press('Escape').catch(() => {});
+    clicks.push({ t: now(), x: Math.round(cx), y: Math.round(cy) });
+    // 헤드리스에선 기본 드롭다운 목록이 화면에 그려지지 않아 값만 바뀌어 보인다.
     // 원본을 보니 배포 설정이 아니라 오류 수정 → 품질 관리
     await sel.selectOption({ label: '품질 관리' });
     await highlight(sel);
@@ -198,12 +199,11 @@ try {
 
   // 5. 저장 → 다시 열어 '교수 확인 전 원래 판단' 확인
   await scene(5, async () => {
-    const save = modal.locator('[data-action=save-record]');
-    await click(save);
+    await click(modal.locator('[data-action=save-record]'));
     await modal.waitFor({ state: 'hidden' });
-    await wait(400);
-    await click(page.locator('[data-action=flag][data-flag=all]'));
     await wait(350);
+    await click(page.locator('[data-action=flag][data-flag=all]'));
+    await wait(300);
     await click(page.locator('.evidence-item', { hasText: FIX }));
     const orig = modal.locator('.explain-card');
     await orig.waitFor();
@@ -228,39 +228,50 @@ try {
     await highlight(row, false);
   });
 
-  // 7. 자기 기술 · 동료 증언은 수치와 분리
+  // 7. 자기 기술 · 동료 증언은 수치와 분리 (화면 제목은 '본인 기술')
   await scene(7, async () => {
     await click(page.locator('.contribution-row', { hasText: '최민재' }));
     await modal.waitFor();
     await wait(500);
-    // 화면의 제목은 '본인 기술'. 본인 기술부터 동료 증언까지 한 번에 보이게 내린다
     const self = modal.locator('.detail-section-title', { hasText: '본인 기술' });
     const peer = modal.locator('.unverified');
     await self.evaluate(el => el.scrollIntoView({ block: 'start' }));
     await modal.evaluate(el => el.scrollBy(0, -24));
     await wait(400);
     await point(self);
-    const a = await box(self, 12), b = await box(peer, 12);
-    await zoomBox([Math.min(a[0], b[0]), a[1], Math.max(a[2], b[2]), b[1] + b[3] - a[1]], 3000);
+    await zoomBox(union(await box(self, 12), await box(peer, 12)), 3000);
   });
 
-  // 8. 기여율과 근거를 함께 — 인쇄용 학생 소명 쪽
+  // 8. 기여율과 근거를 함께 — 인쇄용 학생 소명 쪽을 가로로 꽉 채워 확대한 뒤 아래로 훑는다
   await scene(8, async () => {
     await click(modal.locator('[data-action=close-modal]').first());
     await modal.waitFor({ state: 'hidden' });
-    await moveTo(VW - 40, VH - 40, 8);
+    await moveTo(VW - 60, VH - 60);
     await page.emulateMedia({ media: 'print' });
     await wait(500);
     const dossier = page.locator('.dossier').filter({ has: page.locator('.dossier-table') }).first();
-    await dossier.scrollIntoViewIfNeeded();
-    await page.evaluate(() => scrollBy(0, -30));
+    await dossier.evaluate(el => el.scrollIntoView({ block: 'start' }));
+    await page.evaluate(() => scrollBy(0, -20));
     await wait(600);
-    await zoom(dossier, 5200, 10);
+    // 소명 쪽만 2배로 잘라 찍는다. 화면 밖으로 이어지는 부분까지 담아야 아래로 훑을 수 있다.
+    // 페이지 기준 위치 = 화면 위치 − 문서 맨 위의 화면 위치 (배율이 걸려도 같은 단위)
+    const db = await dossier.boundingBox();
+    const hb = await page.locator('html').boundingBox();
+    const z = { t0: now(), pan: true, box: [db.x - 14, db.y - 14, db.width + 28, db.height + 28].map(Math.round) };
+    zooms.push(z);
+    if (!probe) {
+      z.still = 'still-pan.png';
+      await page.screenshot({ path: join(OUT, z.still), fullPage: true,
+        clip: { x: Math.max(0, db.x - 14), y: Math.max(0, db.y - hb.y - 14), width: db.width + 28, height: db.height + 28 } });
+    }
+    const left = 6400 - (now() - z.t0) * 1000;
+    if (left > 0) await wait(left);
+    z.t1 = now();
   });
 
   if (cdp) await cdp.send('Page.stopScreencast');
   await Promise.all(writes);
-  await writeFile(join(OUT, 'timeline.json'), JSON.stringify({ viewport: [VW, VH], dsf: DSF, frames, scenes, zooms, duration: now() }, null, 2));
+  await writeFile(join(OUT, 'timeline.json'), JSON.stringify({ viewport: [VW, VH], dsf: DSF, frames, scenes, zooms, mouse, clicks, duration: now() }, null, 2));
   console.log(probe ? '점검 PNG 저장' : `${frames.length} 프레임 · ${now().toFixed(1)}초`);
 } finally {
   if (team) {
